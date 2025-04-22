@@ -1,0 +1,10 @@
+#!/bin/bash
+
+echo "Configuring mkosi image: Ensure EROFS module loads on boot"
+
+# Option 1: Using /etc/modules-load.d/
+#chmod +rwx /etc/
+#mkdir -p /etc/modules-load.d
+#echo "erofs" > /etc/modules-load.d/erofs.conf
+
+modprobe erofs
