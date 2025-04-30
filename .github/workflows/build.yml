@@ -1,16 +1,24 @@
-name: Build Images
-on: [push, pull_request, workflow_dispatch]
+name: build
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
+    name: ${{ matrix.image.name }}
     runs-on: ubuntu-24.04
 
     strategy:
       matrix:
         image:
-          - guest-fedora-41
-          - guest-ubuntu-oracular
-          - guest-debian-bookworm
+          - path: guest/fedora/41
+            name: guest-fedora-41
+          - path: guest/ubuntu/oracular
+            name: guest-ubuntu-oracular
+          - path: guest/debian/bookworm
+            name: guest-debian-bookworm
 
     steps:
       - uses: actions/checkout@v4
@@ -21,18 +29,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mkosi qemu-utils systemd-ukify systemd-boot policycoreutils mtools
 
-      - name: Build ${{ matrix.image }}
-        run: sudo mkosi -C ${{ matrix.image }}/
+      - name: Build ${{ matrix.image.name }}
+        run: sudo mkosi -C ${{ matrix.image.path }}/
 
       - name: Convert raw image to qcow2
         run: |
-          qemu-img convert -f raw -O qcow2 ${{ matrix.image }}/image.raw ${{ matrix.image }}/image.qcow2
+          qemu-img convert -f raw -O qcow2 ${{ matrix.image.path }}/image.raw ${{ matrix.image.path }}/image.qcow2
 
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.image }}
+          name: ${{ matrix.image.name }}
           path: |
-            ${{ matrix.image }}/image.efi
-            ${{ matrix.image }}/image.qcow2
+            ${{ matrix.image.path }}/image.efi
+            ${{ matrix.image.path }}/image.qcow2
           retention-days: 7
