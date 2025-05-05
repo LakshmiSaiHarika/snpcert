@@ -26,11 +26,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo sed -i 's/noble/plucky/g' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update
-          sudo apt-get install -y mkosi qemu-utils systemd-ukify systemd-boot policycoreutils mtools
+          sudo apt update
+          sudo apt install -y mkosi
 
       - name: Build ${{ matrix.image.name }}
-        run: sudo mkosi -C ${{ matrix.image.path }}/
+        run: |
+          sudo mkosi -C ${{ matrix.image.path }}/ cat-config
+          sudo mkosi -C ${{ matrix.image.path }}/ summary
+          sudo mkosi -C ${{ matrix.image.path }}/ build
 
       - name: Convert raw image to qcow2
         run: |
