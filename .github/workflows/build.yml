@@ -13,11 +13,11 @@ jobs:
     strategy:
       matrix:
         image:
-          - path: guest/fedora/41
+          - path: net/guest/fedora/41
             name: guest-fedora-41
-          - path: guest/ubuntu/oracular
+          - path: net/guest/ubuntu/oracular
             name: guest-ubuntu-oracular
-          - path: guest/debian/bookworm
+          - path: net/guest/debian/bookworm
             name: guest-debian-bookworm
 
     steps:
@@ -31,19 +31,14 @@ jobs:
 
       - name: Build ${{ matrix.image.name }}
         run: |
-          sudo mkosi -C ${{ matrix.image.path }}/ cat-config
-          sudo mkosi -C ${{ matrix.image.path }}/ summary
-          sudo mkosi -C ${{ matrix.image.path }}/ build
-
-      - name: Convert raw image to qcow2
-        run: |
-          qemu-img convert -f raw -O qcow2 ${{ matrix.image.path }}/image.raw ${{ matrix.image.path }}/image.qcow2
+          sudo mkosi --image-id=${{ matrix.image.name }} -C ${{ matrix.image.path }}/ cat-config
+          sudo mkosi --image-id=${{ matrix.image.name }} -C ${{ matrix.image.path }}/ summary
+          sudo mkosi --image-id=${{ matrix.image.name }} -C ${{ matrix.image.path }}/ build
 
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.image.name }}
           path: |
-            ${{ matrix.image.path }}/image.efi
-            ${{ matrix.image.path }}/image.qcow2
+            ${{ matrix.image.path }}/${{ matrix.image.name }}.efi
           retention-days: 7

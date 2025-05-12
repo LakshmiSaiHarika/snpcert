@@ -1,3 +1,0 @@
-overlay /var overlay noexec,nosuid,nodev,lowerdir=/var,upperdir=/dev/shm/var/upper,workdir=/dev/shm/var/work 0 0
-overlay /etc overlay noexec,nosuid,nodev,lowerdir=/etc,upperdir=/dev/shm/etc/upper,workdir=/dev/shm/etc/work 0 0
-tmpfs /var/lib/containers tmpfs noexec,nosuid,nodev 0 0

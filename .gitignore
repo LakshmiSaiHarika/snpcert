@@ -1,3 +1,6 @@
+/*/tools/
 /*/image
 /*/image.efi
 /*/image.raw
+/*/image.initrd
+/*/image.vmlinuz
