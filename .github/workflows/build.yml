@@ -19,8 +19,6 @@ jobs:
             name: guest-ubuntu-oracular
           - path: net/guest/debian/bookworm
             name: guest-debian-bookworm
-          - path: poweroff
-            name: poweroff
 
     steps:
       - uses: actions/checkout@v4
