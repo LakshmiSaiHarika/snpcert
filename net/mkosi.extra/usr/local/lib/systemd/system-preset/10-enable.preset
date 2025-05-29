@@ -1,2 +1,0 @@
-enable systemd-networkd-wait-online.service
-enable systemd-networkd.service

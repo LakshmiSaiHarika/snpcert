@@ -1,0 +1,8 @@
+[Match]
+Type=ether
+Name=en*
+
+[Network]
+DHCP=yes
+# Needed for KDS access
+DNS=10.218.15.1
