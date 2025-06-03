@@ -1,0 +1,23 @@
+#!/bin/bash
+set -eux
+
+# Expected: mkosi sets $DISTRIBUTION and $RELEASE (e.g. fedora and 41)
+GUEST_IMAGE_ID="guest-${DISTRIBUTION}-${RELEASE}"
+
+# Validate we have a matching guest configuration  
+GUEST_CONFIG_DIR="${SRCDIR}/images/${GUEST_IMAGE_ID}"
+
+GUEST_IMAGE_DIR="${DESTDIR}/usr/local/lib/guest-image"
+
+if [ ! -d "$GUEST_CONFIG_DIR.efi" ]; then  
+   echo "Guest Image not built, building image for embedding."
+   #Build the guest image
+   mkosi --image-id="${GUEST_IMAGE_ID}" -C "${GUEST_CONFIG_DIR}"  build  
+fi
+
+if [ ! -d "$GUEST_IMAGE_DIR" ]; then  
+   mkdir -p "${GUEST_IMAGE_DIR}"  
+fi
+
+cp -r "${SRCDIR}/images/${GUEST_IMAGE_ID}/${GUEST_IMAGE_ID}.efi" \
+   "${DESTDIR}/usr/local/lib/guest-image/guest.efi"
