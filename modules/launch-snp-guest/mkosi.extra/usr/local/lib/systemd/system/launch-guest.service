@@ -1,0 +1,15 @@
+[Unit]
+Description=Launch a SNP enabled guest using qemu, the embeded guest image and the appropriate QEMU and OVMF.
+DefaultDependencies=no
+After=network-online.target calculate-measurement.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/scripts/launch-guest.sh
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStartPost=/usr/bin/touch /run/launch-guest.ok
+
+[Install]
+WantedBy=multi-user.target
