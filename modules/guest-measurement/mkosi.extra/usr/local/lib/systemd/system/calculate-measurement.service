@@ -1,0 +1,16 @@
+[Unit]
+Description=Calculate guest measurement
+DefaultDependencies=no
+After=network-online.target snphost.service
+Wants=network-online.target
+ConditionPathExists=/run/snphost.ok
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/scripts/guest_measurement.sh
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStartPost=/usr/bin/touch /run/calculate-measurement.ok
+
+[Install]
+WantedBy=multi-user.target
