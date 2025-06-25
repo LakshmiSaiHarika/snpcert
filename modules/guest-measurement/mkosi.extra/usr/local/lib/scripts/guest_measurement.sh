@@ -22,5 +22,5 @@ snpguest generate measurement \
     --vcpu-type EPYC-v4 \
     --ovmf "$OVMF_PATH" \
     --kernel "$EFI_PATH" \
-    --output-format base64 \
+    --output-format hex \
     --measurement-file "$MEASUREMENT_FILE"
