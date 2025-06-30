@@ -3,35 +3,57 @@
 # Environment Variables
 ATTESTATION_DIR="/usr/attestation_service"
 
+# Utility function to check the error status of each step in the attestation workflow
+check_command_status() {
+  local command_status=$1
+  local command_name=$2
+  local command_output=$3
+  if [[ $command_status -ne 0 ]]; then
+    >&2 echo -e "ERROR: ${command_name} fails !! \n${command_output}"
+    return 1
+  fi
+}
+
 snpguest_regular_attestation_workflow() {
+  # Step 1: Verify SNP bit status on the guest
+  { guest_snp_bit_result=$(snpguest ok 2>&1); guest_snp_status=$?; }
+  check_command_status "${guest_snp_status}" "SNP verification on the guest" "${guest_snp_bit_result}" || return 1
 
-  # Run SNP tests
-  snpguest ok
-
-  # Cleanup and create a fresh attestation directory
+  # Step 2: Create a fresh attestation working directory
   [  -d "${ATTESTATION_DIR}" ] &&  rm -rf "${ATTESTATION_DIR}"
   mkdir -p "${ATTESTATION_DIR}"
 
-  # Request SNP Attestation Report(Version: 3) with random data
-  snpguest report ${ATTESTATION_DIR}/attestation-report.bin ${ATTESTATION_DIR}/random-request-data.txt --random
+  # Step 3: Generate the SNP Attestation Report using a randomly generated request data
+  { snp_guest_report=$(snpguest report ${ATTESTATION_DIR}/attestation-report.bin ${ATTESTATION_DIR}/random-request-data.txt --random 2>&1); report_status=$?; }
+  check_command_status "${report_status}" "snpguest report generation" "${snp_guest_report}" || return 1
 
-  # Fetch ARK, ASK, VCEK certificates (saved in ./certificates)
-  snpguest fetch ca pem -r ${ATTESTATION_DIR}/attestation-report.bin ${ATTESTATION_DIR}/certificates
-  snpguest fetch vcek pem ${ATTESTATION_DIR}/certificates/ ${ATTESTATION_DIR}/attestation-report.bin
+  # Fetch the ARK, ASK certificate chain from Key Distribution Server
+  { fetch_ca=$(snpguest fetch ca pem -r "${ATTESTATION_DIR}/attestation-report.bin" "${ATTESTATION_DIR}/certificates" 2>&1); fetch_ca_status=$?; }
+  check_command_status "${fetch_ca_status}" "fetch of CA certificate chain" "${fetch_ca}" || return 1
 
-  # Verify if ARK, ASK and VCEK are all signed properly
-  snpguest verify certs ${ATTESTATION_DIR}/certificates/
-  snpguest verify attestation ${ATTESTATION_DIR}/certificates/ ${ATTESTATION_DIR}/attestation-report.bin
+  # Fetch the VCEK certificate chain from Key Distribution Server
+  { fetch_vcek=$(snpguest fetch vcek pem ${ATTESTATION_DIR}/certificates/ ${ATTESTATION_DIR}/attestation-report.bin 2>&1); fetch_vcek_status=$?; }
+  check_command_status "${fetch_vcek_status}" "fetch of VCEK certificate chain" "${fetch_vcek}" || return 1
 
-  # Display the SNP Attestation Report(Version: 3) with random data
-  snpguest display report ${ATTESTATION_DIR}/attestation-report.bin
+  # Verify if the ARK, ASK and VCEK certificate chain are signed properly
+  { verify_cert_chain=$(snpguest verify certs ${ATTESTATION_DIR}/certificates/ 2>&1); verify_cert_chain_status=$?; }
+  check_command_status "${verify_cert_chain_status}" "Verification of ARK, ASK and VCEK cert-chain" "${verify_cert_chain}" || return 1
+
+  # Verify the SNP Attestation Report
+  { verify_attestation=$(snpguest verify attestation ${ATTESTATION_DIR}/certificates/ ${ATTESTATION_DIR}/attestation-report.bin 2>&1); verify_attestation_status=$?; }
+  check_command_status "${verify_attestation_status}" "Verification of SNP Attestation Report" "${verify_attestation}" || return 1
+
+  # Show the SNP Attestation Report for the randomly generated request data
+  { show_attestation_report=$(snpguest display report ${ATTESTATION_DIR}/attestation-report.bin 2>&1); show_attestation_report_status=$?; }
+  check_command_status "${show_attestation_report_status}" "Display of SNP Attestation Report" "${show_attestation_report}" || return 1
+  echo -e "\nSNP Attestation Report generated successfully !!\n${show_attestation_report}"
+
 }
 
 validate_request_data(){
   local random_request_data="$(tr -d '\n'< "${ATTESTATION_DIR}/random-request-data.txt")"
 
-  echo -e "\n"
-  echo -e "Random Request Data:"
+  echo -e "\nRandom Request Data:"
   echo -e "${random_request_data}"
 
   # Get the measurement attribute from the SNP Attestation Report
@@ -42,8 +64,7 @@ validate_request_data(){
 										)
   snpguest_report_request_data=$(echo ${snpguest_report_request_data} | sed $'s/[^[:print:]\t]//g')
 
-  echo -e "\n"
-  echo -e "Request Data from SNP Attestation Report:"
+  echo -e "\nRequest Data from SNP Attestation Report:"
   echo -e "${snpguest_report_request_data} \n"
 
   # Compare the expected request data to the guest report request data
@@ -61,8 +82,7 @@ validate_snp_measurement(){
 										)
   expected_measurement=$(echo ${expected_measurement} | sed $'s/[^[:print:]\t]//g')
 
-  echo -e "\n"
-  echo -e "Expected Measurement:"
+  echo -e "\nExpected Measurement:"
   echo -e "${expected_measurement}"
 
   # Get the SHA-256 sum of the measurement attribute from the SNP Attestation Report
@@ -74,27 +94,24 @@ validate_snp_measurement(){
   #snpguest_report_measurement=$(echo ${snpguest_report_measurement} | sed $'s/[^[:print:]\t]//g')
   snpguest_report_measurement=$(echo ${snpguest_report_measurement} | sha256sum | cut -d ' ' -f 1 )
 
-  echo -e "\n"
-  echo -e "Measurement from SNP Attestation Report:"
+  echo -e "\nMeasurement from SNP Attestation Report:"
   echo -e "${snpguest_report_measurement} \n"
 
   # Compare the expected measurement with the guest report measurement
   [[ "${expected_measurement}" == "${snpguest_report_measurement}" ]] \
-	&& echo -e "The expected measurement matches the snp guest report measurement!" \
-	|| { >&2 echo -e "FAIL: measurements do not match"; return 1; }
+	&& echo -e "\nThe expected measurement matches the snp guest report measurement!" \
+	|| { >&2 echo -e "\nFAIL: measurements do not match"; return 1; }
 }
 
 main() {
-  echo -e "Perform Regular Attestation workflow using snpguest tool ..."
-  snpguest_regular_attestation_workflow
+  echo -e "\nPerform Regular Attestation workflow using snpguest tool ..."
+  snpguest_regular_attestation_workflow || return 1
 
-  echo -e "\n"
-  echo -e "Validate Request Data Attribute ..."
-  validate_request_data
+  echo -e "\nValidate Request Data Attribute ..."
+  validate_request_data || return 1
 
-  echo -e "\n"
-  echo -e "Validate Measurement Attribute ..."
-  validate_snp_measurement
+  echo -e "\nValidate Measurement Attribute ..."
+  validate_snp_measurement || return 1
 }
 
 main
