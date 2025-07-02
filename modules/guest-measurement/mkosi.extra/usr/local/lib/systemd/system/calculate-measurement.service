@@ -6,7 +6,7 @@ Wants=network-online.target
 ConditionPathExists=/run/snphost.ok
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=/usr/local/lib/scripts/guest_measurement.sh
 StandardOutput=journal+console
 StandardError=journal+console

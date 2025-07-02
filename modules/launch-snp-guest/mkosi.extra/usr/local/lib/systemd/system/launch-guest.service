@@ -5,7 +5,7 @@ After=network-online.target calculate-measurement.service
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=/usr/local/lib/scripts/launch-guest.sh
 StandardOutput=journal+console
 StandardError=journal+console
