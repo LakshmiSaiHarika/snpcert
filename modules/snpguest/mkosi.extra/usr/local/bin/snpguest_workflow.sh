@@ -15,6 +15,16 @@ check_command_status() {
 }
 
 snpguest_regular_attestation_workflow() {
+  # Check for MSR module
+  if ! lsmod | grep -q "^msr "; then
+      if modprobe msr; then
+          echo -e "MSR module loaded successfully"
+      else
+          echo -e "Failed to load MSR module"
+          exit 1
+      fi
+  fi
+
   # Step 1: Verify SNP bit status on the guest
   { guest_snp_bit_result=$(snpguest ok 2>&1); guest_snp_status=$?; }
   check_command_status "${guest_snp_status}" "SNP verification on the guest" "${guest_snp_bit_result}" || return 1
