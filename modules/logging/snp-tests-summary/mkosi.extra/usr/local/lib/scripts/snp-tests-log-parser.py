@@ -41,6 +41,51 @@ def get_snp_test_journal_entries():
     proc.wait()
     return snp_test_journal_entries
 
+def get_snp_host_test_journal_summary():
+    """Collect and return all the SNP host test journal entries."""
+    print("get_snp_host_test_journal_sumary")
+    proc = subprocess.Popen(
+        ["journalctl", "SNP_HOST_TEST_LOG=TRUE", "-o", "json"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1
+    )
+
+    snp_host_test_entires = []
+
+    for line in proc.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            snp_host_test_entires.append(entry)
+        except Exception:
+            continue
+
+    proc.stdout.close()
+    proc.wait()
+
+    test_status_emojis = {
+        'done': em.emojize(':check_mark_button:'),
+        'failed': em.emojize(':cross_mark:'),
+        'skipped': em.emojize(':fast_forward:', language='alias')
+    }
+
+    snp_host_test_statuses = gather_snp_test_statuses(snp_host_test_entires)
+
+    snp_host_test_summary = ''
+    for snp_test_service, snp_test_status in snp_host_test_statuses.items():
+        snp_test_status_emoji = test_status_emojis.get(snp_test_status.lower(), '?')
+        snp_host_test_summary += f"{snp_test_status_emoji} {snp_test_service} \n"
+        snp_host_test_description=f"systemctl show -p Description {snp_test_service} | cut -d'=' -f2"
+        snp_host_test_description=get_service_description(snp_test_service)
+        snp_host_test_summary += "     " + snp_host_test_description + "\n"
+
+    print("SNP Host Test Summary \n")
+    print(snp_host_test_summary)
+
 def gather_snp_test_statuses(snp_test_journal_entries):
     """Extract all the SNP test service statuses."""
     snp_test_result_entries = [obj for obj in snp_test_journal_entries if "JOB_RESULT" in obj]
@@ -122,6 +167,7 @@ def main():
 
     snp_test_summary_title = "\n=== SNP Certification Test Results === \n"
     snp_test_summary_content = generate_snp_test_summary_content(snp_test_statuses, snp_test_name)
+    get_snp_host_test_journal_summary()
 
     snp_test_summary = snp_test_summary_title + "\n" + snp_test_summary_content
     print( snp_test_summary )
@@ -137,6 +183,7 @@ def main():
 
     print("\nSNP Certification results are posted at: \n")
     subprocess.run(pastebin_service_message, shell=True, check=True)
+
 
 if __name__ == "__main__":
     main()
