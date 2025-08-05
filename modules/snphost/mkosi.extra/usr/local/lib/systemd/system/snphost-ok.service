@@ -1,15 +1,15 @@
 [Unit]
-Description=Run snphost checks to make sure host is correctly set-up for SNP functionalities.
+Description=Run snphost ok to  make sure host is correctly set-up for SNP functionalities.
 DefaultDependencies=no
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=snphost ok
 StandardOutput=journal+console
 StandardError=journal+console
-ExecStartPost=/usr/bin/touch /run/snphost.ok
+ExecStartPost=/usr/bin/touch /run/snphost-ok.ok
 
 [Install]
 WantedBy=multi-user.target
