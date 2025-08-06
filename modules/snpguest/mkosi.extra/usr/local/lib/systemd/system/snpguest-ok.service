@@ -5,7 +5,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=snpguest ok
 StandardOutput=journal+console
 StandardError=journal+console

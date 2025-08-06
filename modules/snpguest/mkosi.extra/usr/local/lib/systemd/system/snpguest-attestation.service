@@ -5,7 +5,7 @@ After=network-online.target snpguest-ok.service
 Wants=network-online.target snpguest-ok.service
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=/usr/local/lib/scripts/snpguest_attestation.sh
 StandardOutput=journal+console
 StandardError=journal+console
