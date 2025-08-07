@@ -1,9 +1,8 @@
 [Unit]
 Description=Calculate guest measurement
 DefaultDependencies=no
-After=network-online.target snphost-ok.service
+After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/run/snphost-ok.ok
 
 [Service]
 Type=oneshot
