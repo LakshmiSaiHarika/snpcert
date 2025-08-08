@@ -1,0 +1,15 @@
+[Unit]
+Description=Verify the SEV-SNP guest booted correctly
+DefaultDependencies=no
+After=launch-guest.service
+Wants=launch-guest.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/scripts/verify-guest.sh
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStartPost=/usr/bin/touch /run/verify-guest.ok
+
+[Install]
+WantedBy=multi-user.target
