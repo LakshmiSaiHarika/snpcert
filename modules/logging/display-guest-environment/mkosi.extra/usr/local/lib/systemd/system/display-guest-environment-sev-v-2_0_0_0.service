@@ -1,0 +1,16 @@
+[Unit]
+Description=Show SNP Guest Environment Information for SEV Version 2.0.0-0 Report
+DefaultDependencies=no
+After=network-online.service systemd-hostnamed.service
+Wants=network-online.service systemd-hostnamed.service
+Requires=systemd-hostnamed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/local/lib/scripts/sev_v_2_0_0_0/guest_environment.sh
+StandardOutput=journal+console
+StandardError=journal+console
+LogExtraFields="GUEST_ENVIRONMENT=2.0.0-0"
+
+[Install]
+WantedBy=multi-user.target
