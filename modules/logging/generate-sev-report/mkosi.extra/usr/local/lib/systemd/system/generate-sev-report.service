@@ -1,0 +1,16 @@
+[Unit]
+Description=Show the SEV certifcate
+DefaultDependencies=no
+After=network-online.service snphost-ok.service calculate-measurement.service display-guest-logs.service
+Wants=network-online.service snphost-ok.service calculate-measurement.service display-guest-logs.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/scripts/sev_report/sev_certificate/generate_sev_certificate.py
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStartPost=/usr/bin/touch /run/generate-sev-report.ok
+LogExtraFields="SEV_REPORT=TRUE"
+
+[Install]
+WantedBy=multi-user.target
