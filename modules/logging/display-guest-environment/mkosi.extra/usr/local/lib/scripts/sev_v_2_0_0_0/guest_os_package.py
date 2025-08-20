@@ -7,4 +7,4 @@ class GuestOSPackage:
 
     guest_kernel={}
     guest_kernel["fedora"]="kernel"
-    guest_kernel["ubuntu"]="linux-gcp"
+    guest_kernel["ubuntu"]="linux-image-virtual"
