@@ -1,3 +1,4 @@
 enable snpguest-ok.service
 enable snpguest-attestation.service
+enable fetch-snpguest-attestation-status.service
 enable snpguest-tests.target
