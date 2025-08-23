@@ -8,3 +8,4 @@ class GuestOSPackage:
     guest_kernel={}
     guest_kernel["fedora"]="kernel"
     guest_kernel["ubuntu"]="linux-image-virtual"
+    guest_kernel["debian"]="linux-image-amd64"
