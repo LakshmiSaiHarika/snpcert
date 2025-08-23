@@ -1,0 +1,13 @@
+[Include]
+Include=../common
+Include=../network
+Include=../embed-guest-image
+Include=../load-msr-module
+Include=../snphost
+Include=../ovmf-build
+Include=../guest-measurement
+Include=../launch-snp-guest
+Include=../logging/capture-guest-logs-in-host
+Include=../logging/display-guest-logs
+Include=../fpaste-build
+Include=../logging/generate-sev-report

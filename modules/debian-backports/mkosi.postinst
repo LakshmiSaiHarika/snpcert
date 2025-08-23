@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eux
+
+# Update sources list
+apt update
+
+# Install kernel of version 6.11+
+apt install -y -t bookworm-backports linux-image-amd64
+

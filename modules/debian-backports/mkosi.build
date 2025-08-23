@@ -1,0 +1,15 @@
+#!/bin/bash
+set -eux
+
+mkdir -p "${DESTDIR}/etc/apt/sources.list.d/"
+touch "${DESTDIR}/etc/apt/sources.list.d/debian-12-backports.list"
+chmod +x "${DESTDIR}/etc/apt/sources.list.d/debian-12-backports.list"
+echo 'deb http://deb.debian.org/debian bookworm-backports main' |  tee "${DESTDIR}/etc/apt/sources.list.d/debian-12-backports.list"
+
+# Update sources list
+apt update
+
+
+# Install kernel of version 6.11+
+apt install -y -t bookworm-backports linux-image-amd64
+
