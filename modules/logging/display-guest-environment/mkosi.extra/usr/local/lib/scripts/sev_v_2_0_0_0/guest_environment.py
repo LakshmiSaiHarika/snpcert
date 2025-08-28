@@ -26,6 +26,7 @@ class GuestEnvironment:
 # Get installed guest package versions
     def get_guest_kernel_version(self):
         os_id = self.get_guest_os_id()
+        os_id = os_id.replace('"','')
         kernel_pkg_name = GuestOSPackage.guest_kernel.get(os_id)
         kernel_command = subprocess.run(["/usr/local/lib/scripts/sev_v_2_0_0_0/package_version.sh", kernel_pkg_name], capture_output=True, text=True, check=True)
         guest_kernel_version = kernel_command.stdout.strip()
