@@ -1,0 +1,7 @@
+#!/bin/bash
+
+k_version=$(apt-cache policy linux-image-virtual | awk '/Candidate:/ {print $2}' | cut -d'.' -f1-3)
+echo -e "k_Version = ${k_version}"
+
+apt-get install -y "linux-modules-extra-${k_version}"
+

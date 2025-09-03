@@ -2,6 +2,7 @@
 
 PKG_OVMF_PATH="/usr/share/edk2/ovmf/OVMF.amdsev.fd"
 BUILD_OVMF_PATH="/usr/share/build/ovmf/OVMF.fd"
+#PKG_OVMF_PATH="/usr/share/ovmf/OVMF.amdsev.fd"
 EFI_PATH="/usr/local/lib/guest-image/guest.efi"
 MEASUREMENT_FILE="/usr/local/lib/guest-image/guest_measurement.txt"
 GUEST_ERROR_LOG="/tmp/guest-error.log"

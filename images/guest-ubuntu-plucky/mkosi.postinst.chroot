@@ -1,0 +1,11 @@
+#!/bin/bash
+# Find and install the guest package with "linux-modules-extra-<guest-kernel-version>" package pattern,
+# because linux-modules-extra package contains sev-guest kernel module
+
+apt update
+
+linux_image_kernel_version=$(apt-cache policy linux-image-virtual | awk '/Candidate:/ {print $2}' | cut -d'.' -f1-3)
+sev_module_kernel_pkg=$(apt list linux-modules-extra**${linux_image_kernel_version}* | cut -d "/" -f1 | tail -1)
+
+apt install -y $sev_module_kernel_pkg
+

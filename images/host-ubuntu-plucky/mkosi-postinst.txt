@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Find out the running kernel version
+kernel_version=$(uname -r)
+
+# Ensure the prefix matches the installed kernel version format
+module_package="linux-modules-extra-${kernel_version}"
+
+echo "Installing $module_package..."
+
+# Install the package
+#mkosi-chroot apt-get -y update \
+mkosi-chroot export k_version=$(cat ${BUILDROOT}/proc/sys/kernel/osrelease) \
+	     apt-get install -y "linux-modules-extra-${k_version}"
+
