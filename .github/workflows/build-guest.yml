@@ -21,6 +21,8 @@ jobs:
             name: guest-debian-trixie
           - path: images/guest-centos-10
             name: guest-centos-10
+          - path: images/guest-rocky-10
+            name: guest-rocky-10
 
     steps:
       - uses: actions/checkout@v4

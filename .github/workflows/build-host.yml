@@ -21,6 +21,8 @@ jobs:
             name: host-debian-trixie
           - path: images/host-centos-10
             name: host-centos-10
+          - path: images/host-rocky-10
+            name: host-rocky-10
 
     steps:
       - uses: actions/checkout@v4
