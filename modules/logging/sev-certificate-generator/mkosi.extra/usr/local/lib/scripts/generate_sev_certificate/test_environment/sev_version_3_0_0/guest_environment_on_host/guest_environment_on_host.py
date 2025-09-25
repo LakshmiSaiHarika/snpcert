@@ -12,7 +12,7 @@ class GuestEnvironment:
 
         guest_environment = "\n Guest Environment Details:"
 
-        ge_on_host_command = f"journalctl -D {self.guest_logs_path} {self.guest_environment_metadata} -o cat | grep -v .service"
+        ge_on_host_command = f"journalctl -D {self.guest_logs_path} {self.guest_environment_metadata} -o cat | grep -v -e .service -e Starting -e Finished"
         command = subprocess.run(ge_on_host_command, shell=True, check=False, text=True, capture_output=True)
 
         # Handle the error when the command for displaying guest environment fails

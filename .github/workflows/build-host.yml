@@ -23,6 +23,8 @@ jobs:
             name: host-centos-10
           - path: images/host-rocky-10
             name: host-rocky-10
+          - path: images/host-arch-v20250615.366044
+            name: host-arch-v20250615.366044
 
     steps:
       - uses: actions/checkout@v4

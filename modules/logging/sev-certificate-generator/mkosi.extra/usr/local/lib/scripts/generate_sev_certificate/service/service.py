@@ -25,23 +25,30 @@ class Service:
     def get_service_description(self, service, platform):
         """Get the SNP host/guest test service description."""
         description_line_keyterm = "starting"
+        host_service_description_line = "Description="
+        print("\nservice = ", service)
+        print ("\nplatform = ", platform)
         match platform:
             case "host" :
-                host_service_description = f"journalctl -o cat | grep -i {description_line_keyterm} | grep -i {service} | head -1"
+                host_service_description = f"systemctl cat {service} | grep {host_service_description_line}"
                 service_description_command = host_service_description
 
             case "guest" :
-                guest_service_description = f"journalctl -D {self.guest_logs_path} -o cat | grep -i {description_line_keyterm} | grep -i {service} | head -1"
+                #guest_service_description = f"journalctl -D {self.guest_logs_path} -o cat | grep -i {description_line_keyterm} | grep -i {service} | head -1"
+                guest_service_description = f"journalctl -D {self.guest_logs_path} -u {service} -o cat | grep -i {description_line_keyterm} |head -1"
                 service_description_command = guest_service_description
 
         command = subprocess.run(service_description_command, shell=True, check=True, text=True, capture_output=True)
 
         # Receive "<service name>-<service description>" text from the command output
         service_detail = command.stdout
-
+        print("\nservice_detail =", service_detail)
         # Parse the <service description> part
-        match = re.split(r'(?i)-\s+', service_detail, maxsplit=1)
+        #match = re.split(r'(?i)-\s+', service_detail, maxsplit=1)
+        match = re.split(r'\s*(?:=|-|(?i:starting))\s*', service_detail, maxsplit=1)
+
         service_description=match[1].strip()
+        print("\nservice description=", service_description )
         return service_description
 
     def extract_service_status(self, service, platform):

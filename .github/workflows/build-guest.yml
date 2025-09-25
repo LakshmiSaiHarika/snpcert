@@ -23,6 +23,8 @@ jobs:
             name: guest-centos-10
           - path: images/guest-rocky-10
             name: guest-rocky-10
+          - path: images/guest-arch-v20250615.366044
+            name: guest-arch-v20250615.366044
 
     steps:
       - uses: actions/checkout@v4

@@ -29,7 +29,7 @@ truncate -s 0 ${GUEST_ERROR_LOG}
 # Launch the SNP guest in background
 exec qemu-system-x86_64 \
   -enable-kvm \
-  -machine q35 \
+  -machine pc \
   -cpu EPYC-v4 \
   -machine memory-encryption=sev0 \
   -monitor none \
