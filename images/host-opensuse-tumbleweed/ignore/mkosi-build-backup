@@ -1,0 +1,9 @@
+#!/bin/bash
+# SPDX-License-Identifier: LGPL-2.1-or-later
+set -e
+
+zypper addrepo https://download.opensuse.org/repositories/SUSE:CA/openSUSE_Tumbleweed/SUSE:CA.repo
+zypper addrepo https://download.opensuse.org/repositories/Virtualization/openSUSE_Tumbleweed/Virtualization.repo
+zypper addrepo https://download.opensuse.org/repositories/network:utilities/openSUSE_Factory_PowerPC/network:utilities.repo	
+zypper refresh	
+

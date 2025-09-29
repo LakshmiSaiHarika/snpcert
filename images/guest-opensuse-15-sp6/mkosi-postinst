@@ -1,0 +1,13 @@
+#!/bin/bash
+# SPDX-License-Identifier: LGPL-2.1-or-later
+set -e
+
+mkosi-chroot \
+	zypper addrepo https://download.opensuse.org/repositories/Virtualization/openSUSE_Tumbleweed/Virtualization.repo
+	
+mkosi-chroot \
+        zypper addrepo https://download.opensuse.org/repositories/network:utilities/openSUSE_Factory_PowerPC/network:utilities.repo	
+
+mkosi-chroot \
+        zypper refresh	
+

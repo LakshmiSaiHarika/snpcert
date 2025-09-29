@@ -1,0 +1,7 @@
+# mkosi.extra/etc/systemd/network/80-dhcp.network
+[Match]
+Name=en*
+
+[Network]
+DHCP=yes
+
