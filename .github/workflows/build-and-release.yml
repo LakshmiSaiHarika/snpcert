@@ -73,6 +73,8 @@ jobs:
             release: forky
           - distro: opensuse
             release: tumbleweed
+          - distro: ubuntu
+            release: questing
 
     steps:
       - name: Checkout
