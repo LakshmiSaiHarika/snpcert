@@ -11,7 +11,7 @@ if [ -f /etc/os-release ]; then
     OS_NAME="${ID}"            
     OS_VERSION="${VERSION_ID:-""}"
 
-    # Initialize OS release with the OS VERSION_CODENAME if VERSION_ID is missing in /etc/os-release.
+    # Check for VERSION_CODENAME if VERSION_ID is not found in /etc/os-release.
     if [[ -z "${OS_VERSION}" && -n "${VERSION_CODENAME}" ]]; then
         OS_VERSION="${VERSION_CODENAME}"
     fi
