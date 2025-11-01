@@ -4,6 +4,7 @@ set -euo pipefail
 SEV_VERSIONS=("3.0-0")
 SEV_CERT_FILE=""
 SET_MILESTONE="${SET_MILESTONE:-false}"
+OS_PRE_RELEASE=false
 
 # Determine OS name and version
 if [ -f /etc/os-release ]; then
@@ -11,9 +12,11 @@ if [ -f /etc/os-release ]; then
     OS_NAME="${ID}"            
     OS_VERSION="${VERSION_ID:-""}"
 
-    # Check for VERSION_CODENAME if VERSION_ID is not found in /etc/os-release.
+    # Add checks for the OS pre-release condition.
+    # Use VERSION_CODENAME as fallback if VERSION_ID is unset; mark as pre-release.
     if [[ -z "${OS_VERSION}" && -n "${VERSION_CODENAME}" ]]; then
         OS_VERSION="${VERSION_CODENAME}"
+	OS_PRE_RELEASE=true
     fi
 
     OS_LABEL="${OS_NAME}-${OS_VERSION}"
@@ -36,9 +39,15 @@ for sev_version in "${SEV_VERSIONS[@]}"; do
   SEV_CERT_FILE="${HOME:-/root}/sev_certificate_v${sev_version}.txt"
 
   # Call beacon
-  if [ -e "${SEV_CERT_FILE}" ] && [ -z "$(grep "❌" "${SEV_CERT_FILE}")" ] && [ "${SET_MILESTONE}" == "true" ]; then
+  if [ -e "${SEV_CERT_FILE}" ] && [ -z "$(grep "❌" "${SEV_CERT_FILE}")" ] && [ "${SET_MILESTONE}" == "true" ] && [ "${OS_PRE_RELEASE}" == "true" ]; then
+    # Add a milestone if no errors encountered for an OS pre-release.
+    beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" --label "certificate" --label "os-${OS_LABEL}" --label "pre-release" --milestone "v${sev_version}"
+  elif [ -e "${SEV_CERT_FILE}" ] && [ -z "$(grep "❌" "${SEV_CERT_FILE}")" ] && [ "${SET_MILESTONE}" == "true" ]; then
     # Add milestone if no errors encountered and if this is a release build.
     beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" --label "certificate" --label "os-${OS_LABEL}" --milestone "v${sev_version}"
+  elif [ -e "${SEV_CERT_FILE}" ] && [ "${OS_PRE_RELEASE}" == "true" ]; then
+    # Create a GH issue for the OS pre-release.
+    beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" --label "certificate" --label "os-${OS_LABEL}" --label "pre-release"
   else
     beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" --label "certificate" --label "os-${OS_LABEL}"
   fi
