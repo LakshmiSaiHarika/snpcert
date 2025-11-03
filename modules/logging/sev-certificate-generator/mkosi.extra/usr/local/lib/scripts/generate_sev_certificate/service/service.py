@@ -73,6 +73,23 @@ class Service:
         for status, pattern in PATTERNS:
             if pattern.search(service_message):
                 return status
+
+        # Check for service description in the OpenSUSE service logs when a service fails.
+        service_description = self.get_service_description(service, platform)
+        service_description = service_description.strip()
+        print("service_description=", service_description)
+
+        PATTERNS = [
+            ("failed", re.compile(rf'Failed to start {service_description}', re.IGNORECASE)),
+            ("skipped", re.compile(rf'was skipped', re.IGNORECASE)),
+            ("passed", re.compile(rf'{service}: Deactivated successfully', re.IGNORECASE)),
+        ]
+
+        # Evaluate in PATTERNS order which already has desired priority
+        for status, pattern in PATTERNS:
+            if pattern.search(service_message):
+                return status
+
         return "?"
 
     def extract_service_error(self, failed_service, platform="guest"):
