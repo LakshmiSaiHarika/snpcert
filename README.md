@@ -3,7 +3,7 @@
 
 The purpose of this repository is to provide a unified framework for testing and certifying operating system support for [AMD Secure Encrypted Virtualization (SEV)](https://www.amd.com/en/developer/sev.html) features. These are hardware-enabled security features that provide confidentiality and integrity of VM memory through per-VM encryption keys. Self-service tools are provided to run a series of certification tests using an AMD EPYC server, allowing for any user/organization to verify SEV support on a particular OS. 
 
-**Note**: Currently only linux distributions supported by [`mkosi`](https://github.com/systemd/mkosi) are compatible with this framework.
+**Note**: Currently only linux distributions supported by [`mkosi`](https://github.com/systemd/mkosi) are compatible with this framework. Please take a look at few important key points about `sev-certify` project [here](#key-points).
 
 ## Certification Matrix
 
@@ -44,4 +44,11 @@ Host and Guest images are constructed in GitHub Workflows via [`mkosi`](https://
 [hardware-tables]: ./docs/certifications.md#certification-levels-by-hardware
 [cert-definitions]: ./docs/certifications.md#certification-level-definitions
 
+Users seeking to verify [AMD Secure Encrypted Virtualization (SEV) features](https://www.amd.com/en/developer/sev.html) features for an Operating System not included in the current`sev-certify` project can utilize our guide [here](./docs/how-to-add-new-os-images.md).
 
+## Key Points
+- Host and guest artifacts under 'devel' tag in sev-certify are purely for development and testing purpose, and may not be a good fit for production purpose.
+- Each host image will have an embedded guest image.
+- When a host image is booted on the server, host images are installed in RAM.
+- Guest images will "fail" if SNP isn't enabled.
+- Host will automatically reboot when done.
