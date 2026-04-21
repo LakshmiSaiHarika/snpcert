@@ -4,3 +4,11 @@ Name=en*
 
 [Network]
 DHCP=yes
+DNS=10.218.15.1
+
+[DHCP]
+UseDNS=yes
+RouteMetric=100
+
+[DHCPv4]
+UseDNS=yes
