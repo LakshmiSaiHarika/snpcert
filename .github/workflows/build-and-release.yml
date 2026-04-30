@@ -68,7 +68,7 @@ jobs:
           - distro: ubuntu
             release: 25.04
           - distro: debian
-            release: 13
+            release: trixie
           - distro: centos
             release: 10
           - distro: rocky
