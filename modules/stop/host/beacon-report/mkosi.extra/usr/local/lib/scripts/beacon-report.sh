@@ -28,6 +28,8 @@ fi
 # Fetch AMD processor model
 PROC_LABEL=$(/usr/bin/python3 /usr/local/lib/scripts/get_processor_model.py series)
 
+mkdir -p "sev-certificates"
+
 # Loop over to generate beacon report for all SEV certificates
 for sev_version in "${SEV_VERSIONS[@]}"; do
   # Build title
@@ -55,5 +57,10 @@ for sev_version in "${SEV_VERSIONS[@]}"; do
 
   beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" "${PARAMS[@]}"
 
-  echo "Published SEV certificate via beacon with title: $SEV_TITLE"
+  
+  cp "$SEV_CERT_FILE" "sev-certificates/"
+  
+  #beacon upload 
+  beacon upload "sev-certificates"
+  echo "Uploaded SEV certificate via beacon"
 done
