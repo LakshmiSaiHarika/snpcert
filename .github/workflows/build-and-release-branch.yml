@@ -1,0 +1,175 @@
+name: build-images
+on:
+  workflow_dispatch:
+    inputs:
+      replace_release:
+        description: 'Replace existing development assets (if any)'
+        required: false
+        type: boolean
+  pull_request:
+  push:  
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+    branches: 
+      - main  
+      - upload-folder-beacon 
+    tags: 
+      - 'v*'
+
+permissions:
+  contents: write  # Required for creating releases and uploading assets
+  actions: read    # Required for workflow access
+
+jobs:
+  # Development release for tag or main pushes
+  create-release:
+    name: create new release for tagged or latest assets
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Recreate release(replace assets)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/upload-folder-beacon" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="upload-folder-beacon"
+            gh release delete "${TAG}" --cleanup-tag --yes || true
+            while git fetch --tags --prune-tags; git tag -l | grep "^${TAG}$"; do
+              sleep 2;
+            done
+            gh release create "${TAG}" \
+              --title "Development Images" \
+              --notes "Automated build of host and guest images from upload-folder-beacon branch." \
+              --prerelease
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            gh release delete "${TAG}" --cleanup-tag --yes || true
+            while git fetch --tags --prune-tags; git tag -l | grep "^${TAG}$"; do
+              sleep 2;
+            done
+            gh release create "${TAG}" \
+              --title "SEV Certify ${TAG}" \
+              --notes "OS images for ${TAG} certification"
+          fi
+
+  build:
+    name: ${{ matrix.distro }}-${{ matrix.release }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: fedora
+            release: 41
+          - distro: ubuntu
+            release: 25.04
+          - distro: debian
+            release: 13
+          - distro: centos
+            release: 10
+          - distro: rocky
+            release: 10
+          - distro: debian
+            release: forky
+          - distro: ubuntu
+            release: "25.10"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo sed -i 's/noble/plucky/g' /etc/apt/sources.list.d/ubuntu.sources || true
+          sudo apt update
+          sudo apt install -y mkosi
+
+      - name: Fetch latest release tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          
+          # Fetch latest tags using gh CLI (automatically authenticated)
+          SNPGUEST_TAG=$(gh release view --repo virtee/snpguest --json tagName --jq '.tagName')
+          BEACON_TAG=$(gh release view --repo AMDEPYC/beacon --json tagName --jq '.tagName')
+          SNPHOST_TAG=$(gh release view --repo virtee/snphost --json tagName --jq '.tagName')
+          
+          # Inject environment variables into mkosi.conf files
+          sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
+          sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/build/host/beacon/mkosi.conf
+          sed -i "/^\[Build\]/a\Environment=SNPHOST_TAG=$SNPHOST_TAG" modules/build/host/snphost/mkosi.conf
+
+      - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
+        run: |
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
+      
+      - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
+        run: |
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
+      
+      - name: Stage artifacts for release (local copy)
+        run: |        
+          mkdir -p /tmp/release-artifacts
+          cp images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.efi
+          cp images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.efi
+      
+      - name: Upload guest assets (default content type)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == "refs/heads/upload-folder-beacon" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="upload-folder-beacon"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          gh release upload "${TAG}" /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.efi --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload host assets (custom Content-Type)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == "refs/heads/upload-folder-beacon" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="upload-folder-beacon"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # Get the release ID
+          RELEASE_ID=$(gh api repos/$GITHUB_REPOSITORY/releases/tags/"${TAG}" --jq .id)
+          HOST_FILE="/tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.efi"
+          ASSET_NAME=$(basename "$HOST_FILE")
+
+          # Look for an existing asset with the same name
+          ASSET_ID=$(gh api \
+            repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets \
+            --jq ".[] | select(.name==\"$ASSET_NAME\") | .id")
+
+          # If found, delete it
+          if [ -n "$ASSET_ID" ]; then
+            gh api \
+              --method DELETE \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID
+            fi
+
+          # Upload the new asset with the correct Content-Type
+          curl --fail -sS -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/vnd.dispatch+efi" \
+            --data-binary @"$HOST_FILE" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
