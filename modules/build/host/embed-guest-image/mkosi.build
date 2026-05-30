@@ -14,6 +14,8 @@ GUEST_IMAGE_DIR="${DESTDIR}/usr/local/lib/guest-image"
 if [ ! -f "$GUEST_CONFIG_DIR/${GUEST_IMAGE_ID}.efi" ]; then  
    echo "Guest Image not built, building image for embedding."
    #Build the guest image
+   echo "mkosi version:"
+   mkosi --version
    mkosi --image-id="${GUEST_IMAGE_ID}" -C "${GUEST_CONFIG_DIR}"  build
 else
    echo "Guest Image already built, embedding found efi."
