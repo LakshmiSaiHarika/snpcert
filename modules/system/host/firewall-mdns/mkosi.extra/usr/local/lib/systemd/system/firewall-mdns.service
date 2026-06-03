@@ -1,0 +1,14 @@
+[Unit]
+Description=Add mDNS service to firewalld
+After=firewalld.service
+Requires=firewalld.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/firewall-cmd --permanent --add-service=mdns
+ExecStart=/usr/bin/firewall-cmd --reload
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
