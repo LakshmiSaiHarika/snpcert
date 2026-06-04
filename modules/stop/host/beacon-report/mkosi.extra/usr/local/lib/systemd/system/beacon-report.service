@@ -1,8 +1,8 @@
 [Unit]
 Description=Run Beacon report to publish certificate
 DefaultDependencies=no
-Wants=report.target
-After=report.target
+Wants=sev-certificate-generator.service
+After=sev-certificate-generator.service
 
 [Service]
 Type=oneshot
