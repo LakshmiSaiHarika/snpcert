@@ -338,6 +338,7 @@ class StepResult:
     stdout: str | None = None
     stderr: str | None = None
     duration_ms: int | None = None
+    command: str | None = None
 
 
 @dataclass
@@ -347,6 +348,7 @@ class StepHandlerResult:
     exit_code: int = 0
     stdout: str = ""
     stderr: str = ""
+    command: str | None = None
 
 
 @dataclass

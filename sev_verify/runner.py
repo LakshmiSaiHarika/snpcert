@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import time
 from importlib import import_module
@@ -203,6 +204,7 @@ def run_vm_launch_step(
 def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
     """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window)."""
     start = time.monotonic()
+    stop_cmd = f"kill -15 {launch.pid}"
     try:
         stop_vm(launch, timeout=float(step.timeout))
     except OSError as exc:
@@ -212,6 +214,7 @@ def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
             result="error",
             stderr=str(exc),
             duration_ms=duration_ms,
+            command=stop_cmd,
         )
     duration_ms = int((time.monotonic() - start) * 1000)
     msg = "Guest VM stopped"
@@ -222,6 +225,7 @@ def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
         exit_code=0 if passed else 1,
         stdout=msg,
         duration_ms=duration_ms,
+        command=stop_cmd,
     )
 
 
@@ -263,6 +267,7 @@ def run_guest_pull_step(
     host_path = Path(step.host_dest)
     if artifact_dir is not None and not host_path.is_absolute():
         host_path = artifact_dir / host_path
+    guest_cmd = f"base64 {shlex.quote(step.guest_src)}"
     try:
         pull_guest_file_to_host(
             profile,
@@ -277,6 +282,7 @@ def run_guest_pull_step(
             result="error",
             stderr=str(exc),
             duration_ms=duration_ms,
+            command=guest_cmd,
         )
     duration_ms = int((time.monotonic() - start) * 1000)
     passed = _check_expected_values(step, 0, "")
@@ -284,7 +290,9 @@ def run_guest_pull_step(
         step=step,
         result="pass" if passed else "fail",
         exit_code=0,
+        stdout=f"Pulled {step.guest_src} -> {host_path}",
         duration_ms=duration_ms,
+        command=guest_cmd,
     )
 
 
@@ -351,6 +359,7 @@ def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
         stdout=hr.stdout or None,
         stderr=hr.stderr or None,
         duration_ms=duration_ms,
+        command=hr.command,
     )
 
 

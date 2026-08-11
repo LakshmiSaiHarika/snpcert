@@ -32,6 +32,7 @@ from .runner import (
     run_vm_stop_step,
     test_artifact_dir,
 )
+from .step_log import StepLogger
 from .vm_profile import (
     DEFAULT_QEMU_BINARY,
     find_ovmf_path,
@@ -350,6 +351,8 @@ def execute_test(
         artifact_dir.mkdir(parents=True, exist_ok=True)
         _flush(f"   Artifacts: {artifact_dir}")
 
+        step_logger = StepLogger(artifact_dir)
+
         profile = None
         if test.requires_vm:
             profile = effective_vm_profile(
@@ -450,6 +453,8 @@ def execute_test(
                     stderr=f"Unsupported step kind {step.kind!r}",
                 )
             step_results.append(sr)
+            qemu_cmd = launch.command_line if launch is not None else None
+            step_logger.log_step(step, sr, command=qemu_cmd)
 
             _flush(_step_result_line(sr, is_last))
 
