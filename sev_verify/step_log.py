@@ -38,7 +38,7 @@ class StepLogger:
         """Update the current guest context and create guest directory if needed."""
         if guest_id and guest_id != self._current_guest_id:
             self._current_guest_id = guest_id
-            guest_dir = self.artifact_dir / f"guest_{guest_id}"
+            guest_dir = self.artifact_dir / guest_id
             guest_dir.mkdir(parents=True, exist_ok=True)
             self._current_guest_dir = guest_dir
             self._guest_log_path = guest_dir / "steps.log"

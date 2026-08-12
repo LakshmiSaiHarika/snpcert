@@ -170,8 +170,14 @@ def run_step(step: BaseStep, guest_path: Path, artifact_dir: Path | None = None)
 def run_vm_launch_step(
     step: BaseStep, profile: VMProfile,
 ) -> tuple[StepResult, VMLaunchResult | None]:
-    """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``."""
+    """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``.
+
+    If the step has a ``guest_id`` set, it overrides the profile's guest_id.
+    """
     start = time.monotonic()
+    # Override profile's guest_id if the step specifies one
+    if step.guest_id:
+        profile = replace(profile, guest_id=step.guest_id)
     try:
         launch = profile.vm_launch()
     except VMLaunchError as exc:

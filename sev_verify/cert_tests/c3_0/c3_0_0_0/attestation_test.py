@@ -140,6 +140,7 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="vm-1",
             type="setup",
             timeout=300,
         ).add_hint(
@@ -204,6 +205,7 @@ def steps() -> list[BaseStep]:
         ),
             Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="vm-2",
             type="setup",
             timeout=300,
         ).add_hint(

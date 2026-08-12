@@ -67,11 +67,13 @@ When ``--debug`` is enabled, the harness creates detailed logs for debugging tes
 **Test-level logs:**
 - ``steps.log`` — Step-by-step execution log with commands, exit codes, stdout/stderr, and timing
 
-**Per-guest logs** (under ``guest_<id>/``):
+**Per-guest logs** (under ``<guest_id>/``):
 - ``qemu-command.log`` — Full QEMU command line used to launch the guest
 - ``qemu-boot.log`` — Guest serial console output (kernel dmesg logs from boot through shutdown)
 - ``qemu-error.log`` — QEMU stderr output for debugging launch failures
 - ``guest-journal.log`` — Guest journald logs pulled via vsock before VM stop
+
+The ``guest_id`` defaults to the test name, but can be overridden via ``Step.for_vm_launch(..., guest_id="custom-name")``.
 
 The boot log is written at both ``vm_launch`` (to capture logs if the guest crashes during boot) and ``vm_stop`` (to capture the complete dmesg including shutdown). The journal log is fetched via vsock just before stopping the VM.
 
@@ -79,7 +81,7 @@ Example artifact structure with ``--debug``:
 ```
 artifacts/3.0/3.0.0-0/attestation_test/
 ├── steps.log
-├── guest_4c64c664-d4da-4e23-a891-f2bde43676ae/
+├── attestation_test/
 │   ├── steps.log
 │   ├── qemu-command.log
 │   ├── qemu-boot.log
