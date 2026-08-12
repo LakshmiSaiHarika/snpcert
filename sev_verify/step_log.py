@@ -132,6 +132,7 @@ class StepLogger:
     ) -> None:
         """Write a single step entry to a file handle."""
         f.write(f"Step: {step.name}\n")
+        f.write(f"Kind: {step.kind}\n")
         f.write(f"Type: {step.type}\n")
         f.write(f"Timestamp: {self._ts()}\n")
         if step.kind in ("host", "guest"):
@@ -154,8 +155,6 @@ class StepLogger:
                 f.write(f"Guest ID: {guest_id}\n")
             if result.command:
                 f.write(f"Command: {result.command}\n")
-        else:
-            f.write(f"Kind: {step.kind}\n")
         f.write(f"Duration: {result.duration_ms}ms\n")
         f.write(f"Status: {result.result.upper()}")
         if result.exit_code is not None:
