@@ -23,7 +23,7 @@ jobs:
             
             // Extract and validate labels
             const procLabel = issue.labels.find(l => l.name.match(/^proc-\d+$/i));
-            const distroLabel = issue.labels.find(l => l.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i));
+            const distroLabel = issue.labels.find(l => l.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)*$/i));
             if (!procLabel || !distroLabel) return console.log('Missing processor or OS label');
             
             const procSeries = procLabel.name.replace(/^proc-/i, '');
