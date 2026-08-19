@@ -2,7 +2,7 @@ name: Update Certification Matrix
 
 on:
   issues:
-    types: [opened]
+    types: [opened, milestoned]
 
 jobs:
   update-matrix:
@@ -219,7 +219,7 @@ jobs:
 
             // Find the OS label and processor label
             const osLabel = issue.labels.find(label =>
-              label.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i)
+              label.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)*$/i)
             );
             const procLabel = issue.labels.find(label =>
               label.name.match(/^proc-\d+$/i)
