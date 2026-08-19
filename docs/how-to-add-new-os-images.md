@@ -55,6 +55,48 @@ You can create and publish new host or guest images in `sev-certify` with `mkosi
 
     If the `build-and-release` workflow fails, you need to troubleshoot for the error in the workflow log, implement changes, and retest until successful execution.
 
+- **<ins>Check Kernel Modules Information:</ins>**
+
+  After building the image, `mkosi` automatically generates kernel modules reports in the output directory. These reports help you understand which kernel modules are included in your image and their sizes:
+
+  - `<image-name>.modules.txt` - Detailed list of all kernel modules sorted by size (largest first)
+  - `<image-name>.modules-summary.txt` - Summary report with totals by category and top 10 largest modules
+
+  **Example summary report content:**
+  ```
+  Kernel Modules Summary
+  ======================
+  Image: guest-fedora-44
+  Kernel: 6.x.x
+  Generated: 2026-08-18 10:30:00 UTC
+
+  Total modules: 150
+  Total size: 45.32 MB (47513600 bytes)
+
+  Modules by category:
+  --------------------
+    drivers              120 modules    35.50 MB
+    net                   15 modules     5.20 MB
+    fs                    10 modules     3.12 MB
+    crypto                 5 modules     1.50 MB
+
+  Top 10 largest modules:
+  -----------------------
+       5.20 MB  nvidia.ko.xz
+       2.15 MB  iwlwifi.ko.xz
+       ...
+  ```
+
+  These reports are useful for:
+  - Identifying large modules that may be excluded to reduce image size
+  - Verifying that required kernel modules (e.g., SEV/SNP related) are present
+  - Comparing module sets between different OS versions
+  - Debugging boot or functionality issues related to missing modules
+
+  The reports are located in:
+  - **Local builds:** `images/<image-name>/<image-name>.modules.txt` and `images/<image-name>/<image-name>.modules-summary.txt`
+  - **Workflow builds:** Available as build artifacts in the GitHub Actions workflow output
+
 - **<ins>Test the new OS Host/Guest Images:</ins>** 
 
   To test the built guest image, you should:
@@ -169,3 +211,4 @@ Permission errors related to AppArmor while running mkosi are recognized and doc
 ## References
 - **<i>Debian based OS:</i>** Sample PR to add Ubuntu 25.10 OS Support into the `sev-certify` project is available in this [link](https://github.com/AMDEPYC/sev-certify/pull/222).
 - **<i>RH based OS:</i>** Sample PR to add Rocky 10 OS Support into the `sev-certify` project is available in this [link](https://github.com/AMDEPYC/sev-certify/pull/87/).
+
