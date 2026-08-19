@@ -1,0 +1,95 @@
+#!/bin/bash
+set -eu
+
+REPORT_DIR="$OUTPUTDIR"
+IMAGE_NAME="${IMAGE_ID:-image}"
+MODULES_LIST="$REPORT_DIR/$IMAGE_NAME.modules.txt"
+MODULES_SUMMARY="$REPORT_DIR/$IMAGE_NAME.modules-summary.txt"
+
+echo "Generating kernel modules report..."
+
+# Find kernel modules directory in the build root
+KMOD_DIR=$(find "$BUILDROOT/usr/lib/modules" -maxdepth 1 -type d -name "[0-9]*" 2>/dev/null | head -1)
+
+if [[ -z "$KMOD_DIR" ]]; then
+    echo "No kernel modules directory found in $BUILDROOT/usr/lib/modules"
+    exit 0
+fi
+
+KERNEL_VERSION=$(basename "$KMOD_DIR")
+echo "Found kernel version: $KERNEL_VERSION"
+
+# Generate detailed module list with sizes (human-readable)
+{
+    echo "Kernel Modules Report"
+    echo "====================="
+    echo "Image: $IMAGE_NAME"
+    echo "Kernel: $KERNEL_VERSION"
+    echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    echo ""
+    echo "Modules by size (largest first):"
+    echo "--------------------------------"
+    find "$KMOD_DIR" -name "*.ko*" -printf "%s\t%f\n" 2>/dev/null | \
+        sort -rn | \
+        awk '{
+            size = $1
+            name = $2
+            if (size >= 1048576) printf "%8.2f MB  %s\n", size/1048576, name
+            else if (size >= 1024) printf "%8.2f KB  %s\n", size/1024, name
+            else printf "%8d B   %s\n", size, name
+        }'
+} > "$MODULES_LIST"
+
+# Generate summary with totals by category
+{
+    echo "Kernel Modules Summary"
+    echo "======================"
+    echo "Image: $IMAGE_NAME"
+    echo "Kernel: $KERNEL_VERSION"
+    echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    echo ""
+
+    # Count and size totals
+    total_count=$(find "$KMOD_DIR" -name "*.ko*" 2>/dev/null | wc -l)
+    total_size=$(find "$KMOD_DIR" -name "*.ko*" -printf "%s\n" 2>/dev/null | awk '{sum+=$1} END {print sum}')
+    total_size_mb=$(awk "BEGIN {printf \"%.2f\", $total_size/1048576}")
+
+    echo "Total modules: $total_count"
+    echo "Total size: $total_size_mb MB ($total_size bytes)"
+    echo ""
+    echo "Modules by category:"
+    echo "--------------------"
+
+    # Group by subdirectory (category)
+    find "$KMOD_DIR/kernel" -name "*.ko*" -printf "%h\t%s\n" 2>/dev/null | \
+        awk -F'\t' -v base="$KMOD_DIR/kernel" '{
+            dir = $1
+            sub(base "/", "", dir)
+            sub(/\/.*/, "", dir)
+            count[dir]++
+            size[dir] += $2
+        }
+        END {
+            for (d in count) {
+                printf "%s\t%d\t%d\n", d, count[d], size[d]
+            }
+        }' | sort -t$'\t' -k3 -rn | \
+        awk -F'\t' '{
+            size_mb = $3/1048576
+            printf "  %-20s %4d modules  %8.2f MB\n", $1, $2, size_mb
+        }'
+
+    echo ""
+    echo "Top 10 largest modules:"
+    echo "-----------------------"
+    find "$KMOD_DIR" -name "*.ko*" -printf "%s\t%f\n" 2>/dev/null | \
+        sort -rn | head -10 | \
+        awk '{
+            size_mb = $1/1048576
+            printf "  %8.2f MB  %s\n", size_mb, $2
+        }'
+} > "$MODULES_SUMMARY"
+
+echo "Kernel modules report generated:"
+echo "  - $MODULES_LIST"
+echo "  - $MODULES_SUMMARY"
