@@ -2,7 +2,7 @@ name: Update Certification Matrix
 
 on:
   issues:
-    types: [opened, milestoned]
+    types: [opened]
 
 jobs:
   update-matrix:
