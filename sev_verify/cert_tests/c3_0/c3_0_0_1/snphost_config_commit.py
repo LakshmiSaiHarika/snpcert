@@ -7,6 +7,7 @@ the full feature/spec background.
 """
 
 import re
+import shlex
 import subprocess
 import sys
 
@@ -80,33 +81,45 @@ def _run_snphost_tcb() -> subprocess.CompletedProcess:
     )
 
 
-def _read_host_tcb() -> dict[str, dict[str, str]]:
-    """Read all TCB sections (Reported + Platform) from snphost."""
+def _read_host_tcb() -> tuple[dict[str, dict[str, str]], str]:
+    """Read all TCB sections (Reported + Platform) from snphost.
+
+    Returns:
+        (sections, command) where sections maps section name to field dict.
+    """
     proc = _run_snphost_tcb()
+    cmd = shlex.join(proc.args)
     if proc.returncode != 0:
         raise RuntimeError(f"snphost show tcb failed: {proc.stderr.strip()}")
     sections = _parse_tcb_sections(proc.stdout)
     for name in ("Reported", "Platform"):
         if name not in sections:
             raise RuntimeError(f"no {name} TCB section in snphost show tcb output")
-    return sections
+    return sections, cmd
 
 
 def _read_platform_tcb() -> dict[str, str]:
     """Read Platform TCB fields from snphost."""
-    return _read_host_tcb()["Platform"]
+    sections, _ = _read_host_tcb()
+    return sections["Platform"]
 
 
-def _parse_report_tcb_sections(report_path: str) -> dict[str, dict[str, str]]:
+def _parse_report_tcb_sections(
+    report_path: str,
+) -> tuple[dict[str, dict[str, str]], str]:
     """Parse TCB sections from a guest attestation report binary.
 
     Runs ``snpguest display report <path>`` on the host and extracts the
     "Current TCB", "Committed TCB", and "Reported TCB" sections.
+
+    Returns:
+        (sections, command) where sections maps section name to field dict.
     """
     proc = subprocess.run(
         ["snpguest", "display", "report", report_path],
         capture_output=True, text=True, timeout=10,
     )
+    cmd = shlex.join(proc.args)
     if proc.returncode != 0:
         raise RuntimeError(
             f"snpguest display report failed: {proc.stderr.strip()}"
@@ -117,7 +130,7 @@ def _parse_report_tcb_sections(report_path: str) -> dict[str, dict[str, str]]:
             raise RuntimeError(
                 f"no {name} TCB section in snpguest display report output"
             )
-    return {name: sections[name] for name in ("Current", "Committed", "Reported")}
+    return {name: sections[name] for name in ("Current", "Committed", "Reported")}, cmd
 
 
 # ── Host-side verification ──────────────────────────────────────
@@ -130,6 +143,7 @@ def _verify_result(mode: str) -> StepHandlerResult:
         return StepHandlerResult(
             exit_code=1,
             stderr=f"snphost show tcb failed: {proc.stderr.strip()}",
+            command=shlex.join(proc.args),
         )
 
     sections = _parse_tcb_sections(proc.stdout)
@@ -144,13 +158,14 @@ def _verify_result(mode: str) -> StepHandlerResult:
             f"  Reported: {reported}",
             f"  Platform: {platform}",
         ]
-        return StepHandlerResult(exit_code=1, stderr="\n".join(lines))
+        return StepHandlerResult(exit_code=1, stderr="\n".join(lines), command=cmd)
     if mode == "verify-differ" and match:
         return StepHandlerResult(
             exit_code=1,
             stderr="FAIL: Reported should differ from Platform after config set",
+            command=shlex.join(proc.args),
         )
-    return StepHandlerResult(exit_code=0)
+    return StepHandlerResult(exit_code=0, command=shlex.join(proc.args))
 
 
 def verify_match(_ctx: StepContext) -> StepHandlerResult:
@@ -176,10 +191,15 @@ def _verify_guest_tcb(
     Check Guest Current TCB == host Platform TCB
     """
     try:
-        guest = _parse_report_tcb_sections(report_path)
-        host = _read_host_tcb()
+        guest, guest_cmd = _parse_report_tcb_sections(report_path)
+        host, host_cmd = _read_host_tcb()
     except RuntimeError as e:
-        return StepHandlerResult(exit_code=1, stderr=str(e))
+        if guest_cmd and host_cmd:
+            cmd = f"{guest_cmd}; {host_cmd}"
+        else:
+            cmd = guest_cmd or host_cmd
+        return StepHandlerResult(exit_code=1, stderr=str(e), command=cmd)
+    cmd = f"{guest_cmd}; {host_cmd}"
 
     guest_current = guest["Current"]
     guest_reported = guest["Reported"]
@@ -209,7 +229,7 @@ def _verify_guest_tcb(
         f"  host Platform:  {host_platform}",
     ]
     if errors:
-        return StepHandlerResult(exit_code=1, stderr="\n".join(errors + dump))
+        return StepHandlerResult(exit_code=1, stderr="\n".join(errors + dump), command=cmd)
 
     label = "matches" if expect_match_reported else "differs from"
     return StepHandlerResult(
@@ -217,6 +237,7 @@ def _verify_guest_tcb(
         stdout="\n".join(
             [f"Guest TCB matches host (Reported {label} Platform)"] + dump
         ),
+        command=cmd,
     )
 
 
@@ -261,6 +282,7 @@ def verify_lowered_report_signature(ctx: StepContext) -> StepHandlerResult:
         return StepHandlerResult(
             exit_code=1,
             stderr=f"snpguest fetch vcek failed{hint}: {stderr}",
+            command=shlex.join(fetch.args),
         )
 
     verify = subprocess.run(
@@ -275,11 +297,13 @@ def verify_lowered_report_signature(ctx: StepContext) -> StepHandlerResult:
             exit_code=1,
             stdout=verify.stdout,
             stderr=f"FAIL: lowered-TCB report not signed by its VCEK: {verify.stderr.strip()}",
+            command=shlex.join(verify.args),
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout=f"Lowered-TCB report signature verified\n  {verify.stdout.strip()}",
+        command=shlex.join(verify.args),
     )
 
 
@@ -300,9 +324,9 @@ def verify_committed_equals_current(ctx: StepContext) -> StepHandlerResult:
         return StepHandlerResult(exit_code=1, stderr=f"report not found: {report_path}")
 
     try:
-        sections = _parse_report_tcb_sections(str(report_path))
+        sections, cmd = _parse_report_tcb_sections(str(report_path))
     except RuntimeError as e:
-        return StepHandlerResult(exit_code=1, stderr=str(e))
+        return StepHandlerResult(exit_code=1, stderr=str(e), command=cmd)
 
     committed = sections["Committed"]
     current = sections["Current"]
@@ -313,6 +337,7 @@ def verify_committed_equals_current(ctx: StepContext) -> StepHandlerResult:
         return StepHandlerResult(
             exit_code=0,
             stdout=f"Committed == Current - commit is a no-op on the floor.\n{dump}",
+            command=cmd,
         )
 
     # Committed < Current: provisional firmware.  Committing would advance the
@@ -324,7 +349,7 @@ def verify_committed_equals_current(ctx: StepContext) -> StepHandlerResult:
         )
         # stderr so the operator sees it live, not just in artifacts.
         print(warning, file=sys.stderr)
-        return StepHandlerResult(exit_code=0, stdout=warning)
+        return StepHandlerResult(exit_code=0, stdout=warning, command=cmd)
 
     return StepHandlerResult(
         exit_code=1,
@@ -333,6 +358,7 @@ def verify_committed_equals_current(ctx: StepContext) -> StepHandlerResult:
             "advance the floor and bless the provisional image, blocking rollback. "
             f"Pass --allow-host-changes for a host that will be rebooted.\n{dump}"
         ),
+        command=cmd,
     )
 
 
@@ -352,11 +378,13 @@ def commit_current_tcb(_ctx: StepContext) -> StepHandlerResult:
             exit_code=1,
             stdout=proc.stdout,
             stderr=f"snphost commit failed: {proc.stderr.strip()}",
+            command=shlex.join(proc.args),
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout="snphost commit succeeded",
+        command=shlex.join(proc.args),
     )
 
 
@@ -433,6 +461,7 @@ def steps() -> list[BaseStep]:
         # 4. Boot a fresh VM (TCB was lowered before boot)
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="tcb-config-lowered-vm",
             type="required",
             timeout=300,
         ).add_hint(

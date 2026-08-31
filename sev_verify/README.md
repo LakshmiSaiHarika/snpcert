@@ -28,6 +28,12 @@ python3 -m sev_verify /path/to/guest.efi --artifacts-dir /data/sev-artifacts -v 
 
 # Put results somewhere other than results/
 python3 -m sev_verify /path/to/guest.efi --output-dir /data/sev-artifacts -v 3.0
+
+# Enable debug logging (steps.log, guest logs, QEMU boot logs)
+python3 -m sev_verify /path/to/guest.efi --debug -v 3.0
+
+# Combine debug logging with custom artifacts directory
+python3 -m sev_verify /path/to/guest.efi --debug --artifacts-dir /data/sev-artifacts -v 3.0
 ```
 
 ## How it works
@@ -45,7 +51,7 @@ python3 -m sev_verify /path/to/guest.efi --output-dir /data/sev-artifacts -v 3.0
    - **`kind`** — what runs: `host`, `vm_launch`, **`vm_stop`**, `guest`, `guest_pull`, or **`callable`** (in-process handler on the test module; see below).
    - Common fields on **`Step`**: **`expected_result`** (default ``exit_code:0``), **`timeout`** (default **10** seconds); kind-specific arguments go on the chained method or the matching ``Step.for_*`` factory.
 
-3. **Callable steps** — ``Step(...).call(handler="fn")`` or ``Step.for_callable(..., handler="fn")`` builds a step whose `kind` is `callable`. The harness calls `getattr(<test_module>, step.handler)(ctx)` where **`ctx`** is a **`StepContext`**: manifest **`test`**, CLI **`guest_path`**, **`step_results`** from earlier steps in this run, the loaded **`module`**, when a VM is active **`profile`** / **`launch`**, and global **`cli_qemu_binary`** / **`cli_ovmf_path`** when you passed **`--qemu-binary`** / **`--ovmf`**. The handler must return **`StepHandlerResult(exit_code=..., stdout=..., stderr=...)`**; the same **`expected_result`** rules apply (`exit_code:…`, `stdout_contains:…`). Use this for comparisons (e.g. parse `report.bin` and check fields), derived checks, or any logic that is not a shell one-liner. The step **`timeout`** is enforced with a thread-pool wait (stuck CPU in C extensions may not interrupt cleanly).
+3. **Callable steps** — ``Step(...).call(handler="fn")`` or ``Step.for_callable(..., handler="fn")`` builds a step whose `kind` is `callable`. The harness calls `getattr(<test_module>, step.handler)(ctx)` where **`ctx`** is a **`StepContext`**: manifest **`test`**, CLI **`guest_path`**, **`step_results`** from earlier steps in this run, the loaded **`module`**, when a VM is active **`profile`** / **`launch`**, and global **`cli_qemu_binary`** / **`cli_ovmf_path`** when you passed **`--qemu-binary`** / **`--ovmf`**. The handler must return **`StepHandlerResult(exit_code=..., stdout=..., stderr=...)`**; the same **`expected_result`** rules apply (`exit_code:…`, `stdout_contains:…`). Use this for comparisons (e.g. parse `report.bin` and check fields), derived checks, or any logic that is not a shell one-liner. The step **`timeout`** is enforced with a thread-pool wait (stuck CPU in C extensions may not interrupt cleanly). When using `subprocess.run()` in your handler, set the optional **`command`** field in `StepHandlerResult` for debug logging.
 
 4. If in the test manifest the scope is defined as either `guest` or `mixed`, the harness builds a `VMProfile` from the test module (`vm_profile()` or `vm_profile` attribute) merged with the CLI `path_to_guest`. If `vm_profile` is omitted, defaults from `vm_profile.VMProfile` are used with the CLI image.
 
@@ -65,6 +71,36 @@ Prerequisite tests (no certification) use ``<artifacts-dir>/prereqs/<test_name>/
 
 The harness creates the directory before the first step and prints ``Artifacts: …``. Callable steps use ``ctx.artifact_dir``; host shell steps get ``$SEV_VERIFY_ARTIFACT_DIR``. For ``guest_pull``, a *relative* ``host_dest`` is resolved under ``artifact_dir``; absolute paths are unchanged.
 
+## Debug logging
+
+When ``--debug`` is enabled, the harness creates detailed logs for debugging test execution and guest behavior. These are written to the test's artifact directory (respects ``--artifacts-dir`` if specified):
+
+**Test-level logs:**
+- ``steps.log`` — Step-by-step execution log with commands, exit codes, stdout/stderr, and timing
+
+**Per-guest logs** (under ``<guest_id>/``):
+- ``qemu-command.log`` — Full QEMU command line used to launch the guest
+- ``qemu-boot.log`` — Guest serial console output (kernel dmesg logs from boot through shutdown)
+- ``qemu-error.log`` — QEMU stderr output for debugging launch failures
+- ``guest-journal.log`` — Guest journald logs pulled via vsock before VM stop
+
+The ``guest_id`` defaults to a generated UUID, but can be set explicitly via ``Step.for_vm_launch(..., guest_id="vm-1")``.
+
+The boot log is written at both ``vm_launch`` (to capture logs if the guest crashes during boot) and ``vm_stop`` (to capture the complete dmesg including shutdown). The journal log is fetched via vsock just before stopping the VM.
+
+Example artifact structure with ``--debug`` (assuming ``guest_id="vm-1"``):
+```
+artifacts/3.0/3.0.0-0/attestation_test/
+├── steps.log
+├── vm-1/
+│   ├── steps.log
+│   ├── qemu-command.log
+│   ├── qemu-boot.log
+│   ├── qemu-error.log
+│   └── guest-journal.log
+└── report.bin
+```
+
 ## Layout
 
 ```
@@ -79,6 +115,7 @@ sev_verify/              Harness package
   environment.py         Host component versions recorded in the result
   os_info.py             Host and guest OS identity (guest read over vsock)
   output.py              JSON and Markdown result writers
+  step_log.py            Debug logging for steps and guest artifacts
   cert_tests/            Certification levels
     common/              Shared test modules
       snp_ok.py      Example host-only test
@@ -124,4 +161,6 @@ Invoke as `python3 -m sev_verify <path_to_guest> [flags]`. There are no subcomma
 | `--qemu-binary`, `--qemu PATH` | test `VMProfile`, then `qemu-system-x86_64` | Override the QEMU executable for every test that launches a VM. Path must exist. |
 | `--ovmf PATH` | test `VMProfile`, then host search paths | Override the OVMF firmware `.fd` for every test that launches a VM. Path must exist. |
 | `--allow-host-changes` | off | Allow tests to make host-level changes, such as firmware TCB settings (e.g. `snphost commit` advancing the committed TCB floor). These are boot-session-only and reset on reboot. Tests that may change host state are declared with `host_changes = true` in the manifest and listed at startup (grouped by level) along with whether this flag is active. |
+
+`--output-dir` stores the final certification reports (JSON/Markdown summaries) generated after all tests complete, while `--artifacts-dir` stores per-test working files created during execution such as pulled binaries, logs, and intermediate data.
 

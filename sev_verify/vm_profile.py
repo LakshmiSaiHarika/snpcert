@@ -13,6 +13,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, TextIO
@@ -33,6 +34,7 @@ def find_ovmf_path() -> str | None:
 
 
 DEFAULT_GUEST_ERROR_LOG = "/tmp/guest-error.log"
+DEFAULT_GUEST_BOOT_LOG = "/tmp/guest-boot.log"
 DEFAULT_QEMU_BINARY = "qemu-system-x86_64"
 DEFAULT_MEMORY_MB = 4096
 DEFAULT_VSOCK_CID = 3
@@ -89,11 +91,15 @@ class VMProfile:
     """Launch-time configuration for an SEV-SNP guest."""
     # QEMU variables with non-default values
     image_path: str
+    # Unique identifier for this guest launch (auto-generated if not provided).
+    # Useful when multiple guests are launched within the same test run.
+    guest_id: str | None = None
     # QEMU variables
     qemu_binary: str = DEFAULT_QEMU_BINARY
     ovmf_path: str | None = None
     memory_mb: int = DEFAULT_MEMORY_MB
     guest_error_log: str = DEFAULT_GUEST_ERROR_LOG
+    guest_boot_log: str = DEFAULT_GUEST_BOOT_LOG
     # QEMU user-mode NAT: guest outbound Internet (e.g. certificate downloads).
     network_enabled: bool = True
     # Host↔guest command channel over AF_VSOCK (see :mod:`guest_vsock`).
@@ -115,6 +121,9 @@ class VMProfile:
     # Fixed SEV-SNP parameters used by the existing launch scripts.
     cbitpos: int = 51
     reduced_phys_bits: int = 1
+    # Debug mode: when True, QEMU captures serial console output to guest_boot_log.
+    # Controlled by the --debug CLI flag.
+    debug: bool = False
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> VMProfile:
@@ -205,6 +214,11 @@ class VMProfile:
 
         error_log = Path(self.guest_error_log)
         error_log.parent.mkdir(parents=True, exist_ok=True)
+        if self.debug:
+            boot_log = Path(self.guest_boot_log)
+            boot_log.parent.mkdir(parents=True, exist_ok=True)
+            # Truncate boot log to avoid stale data from previous runs
+            boot_log.write_bytes(b"")
 
         with open(error_log, "wb") as err_file:
             process = subprocess.Popen(
@@ -248,6 +262,7 @@ class VMProfile:
             elif message == "VM launch verified":
                 message = "VM launched and guest booted"
 
+        effective_guest_id = self.guest_id if self.guest_id else str(uuid.uuid4())
         return VMLaunchResult(
             pid=process.pid,
             command=command,
@@ -255,6 +270,7 @@ class VMProfile:
             process=process,
             ok=ok,
             message=message,
+            guest_id=effective_guest_id,
         )
 
 
@@ -267,12 +283,23 @@ class VMLaunchResult:
     profile: VMProfile
     ok: bool
     message: str
+    guest_id: str
     checks: dict[str, bool] = field(default_factory=dict)
     process: subprocess.Popen[bytes] | None = None
 
     @property
     def command_line(self) -> str:
         return " ".join(shlex.quote(part) for part in self.command)
+
+    @property
+    def boot_log_path(self) -> str:
+        """Path to the guest boot log (serial console output)."""
+        return self.profile.guest_boot_log
+
+    @property
+    def error_log_path(self) -> str:
+        """Path to the QEMU error log (stderr)."""
+        return self.profile.guest_error_log
 
 
 def _format_policy(policy: str | int) -> str:
@@ -340,6 +367,15 @@ def build_qemu_command(profile: VMProfile) -> list[str]:
         "-device",
         _build_vsock_device(profile),
     ]
+
+    # Serial console to capture guest boot logs (dmesg output) - only when debug is enabled
+    if profile.debug:
+        cmd.extend([
+            "-chardev",
+            f"file,id=serial0,path={profile.guest_boot_log}",
+            "-serial",
+            "chardev:serial0",
+        ])
 
     if profile.network_enabled:
         cmd.extend(["-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0"])
