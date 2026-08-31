@@ -47,15 +47,17 @@ def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
             stderr=str(e),
         )
 
+    cmd = [
+        "snpguest", "generate", "measurement",
+        "--vcpu-type", "EPYC-v4",
+        "--ovmf", str(ovmf_path),
+        "--kernel", str(ctx.guest_path),
+        "--output-format", "hex",
+        "--measurement-file", str(measurement_file)
+    ]
+    cmd_str = " ".join(cmd)
     result = subprocess.run(
-        [
-            "snpguest", "generate", "measurement",
-            "--vcpu-type", "EPYC-v4",
-            "--ovmf", str(ovmf_path),
-            "--kernel", str(ctx.guest_path),
-            "--output-format", "hex",
-            "--measurement-file", str(measurement_file),
-        ],
+        cmd,
         capture_output=True,
         text=True,
         check=False,
@@ -65,12 +67,14 @@ def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=cmd_str,
         )
 
     expected_measurement = measurement_file.read_text().strip()
     return StepHandlerResult(
         exit_code=0,
         stdout=f"Calculated expected measurement: {expected_measurement}",
+        command=cmd_str,
     )
 
 
@@ -87,13 +91,15 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
 
     expected_measurement = measurement_file.read_text().strip()
     request_data = "0x" + str(request_file.read_bytes().hex())
+    cmd = [
+        "snpguest", "verify", "attestation",
+        str(ctx.artifact_dir), str(report_file),
+        "--", "--measurement", str(expected_measurement),
+        "--report-data", str(request_data),
+    ]
+    cmd_str = " ".join(cmd)
     result = subprocess.run(
-        [
-            "snpguest", "verify", "attestation",
-            str(ctx.artifact_dir), str(report_file),
-            "--measurement", str(expected_measurement),
-            "--report-data", str(request_data),
-        ],
+        cmd,
         capture_output=True,
         text=True,
         check=False,
@@ -103,11 +109,13 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=cmd_str,
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout="Successfully verified report data and measurement",
+        command=cmd_str,
     )
 
 
@@ -132,6 +140,72 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="vm-1",
+            type="setup",
+            timeout=300,
+        ).add_hint(
+            "Address already in use",
+            "A previous VM may still be running. "
+            "Try: sudo kill $(pgrep -f 'qemu.*guest-cid')",
+        ),
+        Step.for_guest(
+            name="Get attestation report with snpguest",
+            type="required",
+            command="snpguest report report.bin request.bin --random",
+            timeout=300,
+        ),
+        Step.for_guest_pull(
+            name="Pull report from guest",
+            type="required",
+            guest_src="report.bin",
+            host_dest="report.bin",
+            timeout=120,
+        ),
+        Step.for_guest_pull(
+            name="Pull request file from guest",
+            type="required",
+            guest_src="request.bin",
+            host_dest="request.bin",
+            timeout=120,
+        ),
+        Step.for_host(
+            name="Fetch certificate chain from kds",
+            type="setup",
+            command='snpguest fetch ca pem "$SEV_VERIFY_ARTIFACT_DIR" -r "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
+            timeout=60,
+        ),
+        Step.for_host(
+            name="Fetch VCEK from kds",
+            type="setup",
+            command='snpguest fetch vcek pem "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
+            timeout=60,
+        ).add_hint("429", "Rate limited by KDS, re-run in a minute"),
+        Step.for_host(
+            name="Verify certificate chain",
+            type="required",
+            command='snpguest verify certs "$SEV_VERIFY_ARTIFACT_DIR"',
+            timeout=60,
+        ),
+        Step.for_host(
+            name="Verify report signature and TCB values",
+            type="required",
+            command='snpguest verify attestation "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
+            timeout=60,
+        ),
+        Step.for_callable(
+            name="Verify Request data and Measurement",
+            type="required",
+            handler="verify_report_fields",
+            timeout=30,
+        ),
+        Step.for_vm_stop(
+            name="Stop VM",
+            type="info",
+            timeout=60,
+        ),
+            Step.for_vm_launch(
+            name="Launch SEV-SNP guest",
+            guest_id="vm-2",
             type="setup",
             timeout=300,
         ).add_hint(
