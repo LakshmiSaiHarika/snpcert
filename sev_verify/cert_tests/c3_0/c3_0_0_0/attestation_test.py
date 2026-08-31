@@ -28,7 +28,8 @@ from sev_verify.cvm_props import (
     read_measurement,
 )
 from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
-from sev_verify.vm_profile import VMProfile
+from sev_verify.vm_profile import VMProfile, VMProfileError
+import shlex
 
 vm_profile = VMProfile(
     image_path="",
@@ -67,11 +68,13 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=shlex.join(result.args),
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout="Successfully verified report data and measurement",
+        command=shlex.join(result.args),
     )
 
 
@@ -96,6 +99,7 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="regular-guest-attestation-test-vm",
             type="setup",
             timeout=300,
         ).add_hint(

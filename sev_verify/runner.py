@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import time
 from importlib import import_module
@@ -20,7 +21,7 @@ from .models import (
     StepResult,
     TestDefinition,
 )
-from .vm_profile import VMProfile, VMLaunchResult, VMProfileError, stop_vm
+from .vm_profile import VMProfile, VMLaunchResult, VMProfileError, stop_vm, build_qemu_command
 
 
 def _check_expected_values(step: BaseStep, exit_code: int, stdout: str) -> bool:
@@ -169,8 +170,17 @@ def run_step(step: BaseStep, guest_path: Path, artifact_dir: Path | None = None)
 def run_vm_launch_step(
     step: BaseStep, profile: VMProfile,
 ) -> tuple[StepResult, VMLaunchResult | None]:
-    """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``."""
+    """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``.
+
+    If the step has a ``guest_id`` set, it overrides the profile's guest_id.
+    """
     start = time.monotonic()
+    # Build QEMU command before attempting launch so we can log it even on failure
+    try:
+        qemu_command = build_qemu_command(profile)
+        qemu_command_line = shlex.join(qemu_command)
+    except Exception:
+        qemu_command_line = None
     try:
         launch = profile.vm_launch()
     except VMProfileError as exc:
@@ -187,6 +197,7 @@ def run_vm_launch_step(
                 exit_code=1,
                 stderr=str(exc),
                 duration_ms=duration_ms,
+                command=qemu_command_line,
             ),
             None,
         )
@@ -201,6 +212,7 @@ def run_vm_launch_step(
             stdout=launch.message if launch.ok else None,
             stderr=None if launch.ok else launch.message,
             duration_ms=duration_ms,
+            command=launch.command_line,
         ),
         launch,
     )
@@ -290,6 +302,7 @@ def run_guest_pull_step(
         step=step,
         result="pass" if passed else "fail",
         exit_code=0,
+        stdout=f"Pulled {step.guest_src} -> {host_path}",
         duration_ms=duration_ms,
     )
 
@@ -357,6 +370,7 @@ def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
         stdout=hr.stdout or None,
         stderr=hr.stderr or None,
         duration_ms=duration_ms,
+        command=hr.command,
     )
 
 
@@ -366,6 +380,7 @@ def effective_vm_profile(
     *,
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
+    debug: bool = False,
 ) -> VMProfile:
     """
     Merge CLI guest path (and optional QEMU / OVMF overrides) into a profile.
@@ -373,6 +388,9 @@ def effective_vm_profile(
     The ``path_to_guest`` argument always supplies the bootable guest image;
     ``declared`` supplies QEMU, vsock, and SEV-SNP options from the test module.
     Non-``None`` ``qemu_binary`` / ``ovmf_path`` override the merged profile.
+
+    When ``debug`` is True, the profile's debug flag is set. Log paths and
+    guest_id are handled by the CLI step handler before vm_launch.
     """
 
     if declared is None:
@@ -384,4 +402,6 @@ def effective_vm_profile(
         base = replace(base, qemu_binary=qemu_binary)
     if ovmf_path is not None:
         base = replace(base, ovmf_path=ovmf_path)
+    if debug:
+        base = replace(base, debug=True)
     return base

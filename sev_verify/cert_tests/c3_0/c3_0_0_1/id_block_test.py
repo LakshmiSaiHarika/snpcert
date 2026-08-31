@@ -12,6 +12,7 @@ Negative path: attempt three launches that must fail:
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import tempfile
 from dataclasses import replace
@@ -166,6 +167,7 @@ def _regenerate_id_block(
         return StepHandlerResult(
             exit_code=1,
             stderr=f"snpguest generate id-block failed:\n{result.stderr}",
+            command=shlex.join(result.args),
         )
 
     ctx.profile = replace(
@@ -174,7 +176,7 @@ def _regenerate_id_block(
         id_auth=id_auth_file.read_text().strip(),
         policy=policy,
     )
-    return StepHandlerResult(exit_code=0)
+    return StepHandlerResult(exit_code=0, command=shlex.join(result.args))
 
 
 def set_bad_measurement(ctx: StepContext) -> StepHandlerResult:
@@ -352,6 +354,7 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch with valid ID block",
+            guest_id="positive-valid-id-block-vm",
             type="setup",
             timeout=300,
         ).add_hint(
@@ -393,6 +396,7 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch with bad measurement (expect rejection)",
+            guest_id="negative-bad-measurement-vm",
             type="required",
             # Assert the firmware's own reason, not merely that something
             # failed: exit_code:1 alone is also satisfied by a boot timeout, so
@@ -425,6 +429,7 @@ def steps() -> list[BaseStep]:
             ),
             Step.for_vm_launch(
                 name="Launch with SMT-incompatible policy (expect rejection)",
+                guest_id="negative-smt-policy-vm",
                 type="required",
                 # This one is refused by KVM before the firmware sees it
                 # (SNP_LAUNCH_START ret=-22 fw_error=0 ''), so there is no
@@ -459,6 +464,7 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch with impossible ABI version (expect rejection)",
+            guest_id="negative-abi-version-vm",
             type="required",
             # Firmware rejects this one: SNP_LAUNCH_START fw_error=7.
             expected_result="stdout_contains:Policy is not allowed",

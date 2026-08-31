@@ -21,6 +21,7 @@ is typed "setup" — the remaining steps are skipped cleanly.
 from __future__ import annotations
 
 import os
+import shlex
 import string
 import subprocess
 import tempfile
@@ -217,11 +218,13 @@ def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=shlex.join(result.args),
         )
     measurement = measurement_file.read_text().strip()
     return StepHandlerResult(
         exit_code=0,
         stdout=f"Measurement: {measurement}",
+        command=shlex.join(result.args),
     )
 
 
@@ -307,6 +310,7 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=shlex.join(result.args),
         )
 
     id_block_b64 = id_block_file.read_text().strip()
@@ -323,4 +327,5 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
             f"  family_id={meta.family_id} image_id={meta.image_id} "
             f"svn={meta.guest_svn} policy={hex(meta.policy)}"
         ),
+        command=shlex.join(result.args),
     )
