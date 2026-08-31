@@ -28,6 +28,9 @@ python3 -m sev_verify /path/to/guest.efi --artifacts-dir /data/sev-artifacts -v 
 
 # Put results somewhere other than results/
 python3 -m sev_verify /path/to/guest.efi --output-dir /data/sev-artifacts -v 3.0
+
+# Enable debug logging (steps.log, guest logs, QEMU boot logs)
+python3 -m sev_verify /path/to/guest.efi --debug -v 3.0
 ```
 
 ## How it works
@@ -60,6 +63,36 @@ Prerequisite tests (no certification) use ``<artifacts-dir>/prereqs/<test_name>/
 
 The harness creates the directory before the first step and prints ``Artifacts: …``. Callable steps use ``ctx.artifact_dir``; host shell steps get ``$SEV_VERIFY_ARTIFACT_DIR``. For ``guest_pull``, a *relative* ``host_dest`` is resolved under ``artifact_dir``; absolute paths are unchanged.
 
+## Debug logging
+
+When ``--debug`` is enabled, the harness creates detailed logs for debugging test execution and guest behavior. These are written to the test's artifact directory:
+
+**Test-level logs:**
+- ``steps.log`` — Step-by-step execution log with commands, exit codes, stdout/stderr, and timing
+
+**Per-guest logs** (under ``<guest_id>/``):
+- ``qemu-command.log`` — Full QEMU command line used to launch the guest
+- ``qemu-boot.log`` — Guest serial console output (kernel dmesg logs from boot through shutdown)
+- ``qemu-error.log`` — QEMU stderr output for debugging launch failures
+- ``guest-journal.log`` — Guest journald logs pulled via vsock before VM stop
+
+The ``guest_id`` defaults to the test name, but can be overridden via ``Step.for_vm_launch(..., guest_id="custom-name")``.
+
+The boot log is written at both ``vm_launch`` (to capture logs if the guest crashes during boot) and ``vm_stop`` (to capture the complete dmesg including shutdown). The journal log is fetched via vsock just before stopping the VM.
+
+Example artifact structure with ``--debug``:
+```
+artifacts/3.0/3.0.0-0/attestation_test/
+├── steps.log
+├── attestation_test/
+│   ├── steps.log
+│   ├── qemu-command.log
+│   ├── qemu-boot.log
+│   ├── qemu-error.log
+│   └── guest-journal.log
+└── report.bin
+```
+
 ## Layout
 
 ```
@@ -69,6 +102,7 @@ sev_verify/              Harness package
   runner.py              load_test_execution_plan, run_step, run_vm_launch_step, …
   vm_profile.py          VMProfile, QEMU argv, vm_launch / stop_vm
   guest_vsock.py         vsock command channel to the guest
+  step_log.py            Debug logging for steps and guest artifacts
   cert_tests/            Certification levels
     common/              Shared test modules
       snp_ok.py      Example host-only test
