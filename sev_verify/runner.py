@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -360,15 +361,67 @@ def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
     )
 
 
+def run_qmp_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
+    """Execute a QMP command on the running VM."""
+    from .qmp_client import QMPClient, QMPError
+
+    start = time.monotonic()
+
+    if not launch.qmp_socket_path:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return StepResult(
+            step=step,
+            result="error",
+            stderr="QMP not enabled for this VM (set qmp_enabled=True in VMProfile)",
+            duration_ms=duration_ms,
+        )
+
+    try:
+        with QMPClient(launch.qmp_socket_path, timeout=float(step.timeout)) as qmp:
+            if ":" in step.command and step.command.split(":", 1)[1].strip().startswith("{"):
+                cmd_name, args_json = step.command.split(":", 1)
+                arguments = json.loads(args_json)
+            else:
+                cmd_name = step.command
+                arguments = None
+
+            result = qmp.execute(cmd_name, arguments)
+    except QMPError as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return StepResult(
+            step=step,
+            result="error",
+            stderr=str(exc),
+            duration_ms=duration_ms,
+        )
+
+    duration_ms = int((time.monotonic() - start) * 1000)
+    exit_code = 0 if result.success else 1
+    stdout = json.dumps(result.data, indent=2) if result.data else ""
+    stderr = result.error_desc or ""
+
+    passed = _check_expected_values(step, exit_code, stdout)
+    return StepResult(
+        step=step,
+        result="pass" if passed else "fail",
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        duration_ms=duration_ms,
+    )
+
+
 def effective_vm_profile(
     declared: VMProfile | None,
     guest_path: Path,
     *,
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
+    qmp_enabled: bool = True,
+    qmp_timeout: float = 10.0,
 ) -> VMProfile:
     """
-    Merge CLI guest path (and optional QEMU / OVMF overrides) into a profile.
+    Merge CLI guest path (and optional QEMU / OVMF / QMP overrides) into a profile.
 
     The ``path_to_guest`` argument always supplies the bootable guest image;
     ``declared`` supplies QEMU, vsock, and SEV-SNP options from the test module.
@@ -384,4 +437,8 @@ def effective_vm_profile(
         base = replace(base, qemu_binary=qemu_binary)
     if ovmf_path is not None:
         base = replace(base, ovmf_path=ovmf_path)
+    if not qmp_enabled:
+        base = replace(base, qmp_enabled=False)
+    if qmp_timeout != 10.0:
+        base = replace(base, qmp_timeout=qmp_timeout)
     return base

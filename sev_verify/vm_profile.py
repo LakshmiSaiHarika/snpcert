@@ -112,6 +112,10 @@ class VMProfile:
     # Fixed SEV-SNP parameters used by the existing launch scripts.
     cbitpos: int = 51
     reduced_phys_bits: int = 1
+    # QMP (QEMU Machine Protocol) configuration for VM control via JSON.
+    qmp_enabled: bool = True
+    qmp_socket_path: str | None = None
+    qmp_timeout: float = 10.0
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> VMProfile:
@@ -195,7 +199,7 @@ class VMProfile:
         Returns :class:`VMLaunchResult` with ``ok=False`` when verification fails.
         """
         self.validate()
-        command = build_qemu_command(self)
+        command, qmp_socket_path = build_qemu_command(self)
 
         if print_qemu_command:
             print_qemu(command)
@@ -215,13 +219,15 @@ class VMProfile:
 
         if process.poll() is not None:
             stderr_tail = error_log.read_text(encoding="utf-8", errors="replace").strip()
+            if qmp_socket_path:
+                Path(qmp_socket_path).unlink(missing_ok=True)
             raise VMLaunchError(
                 f"QEMU exited immediately with code {process.returncode}"
                 + (f": {stderr_tail}" if stderr_tail else "")
             )
 
         message = "VM launch verified"
-       
+
         ok = True
 
         if wait_for_boot:
@@ -252,6 +258,7 @@ class VMProfile:
             process=process,
             ok=ok,
             message=message,
+            qmp_socket_path=qmp_socket_path,
         )
 
 
@@ -266,10 +273,18 @@ class VMLaunchResult:
     message: str
     checks: dict[str, bool] = field(default_factory=dict)
     process: subprocess.Popen[bytes] | None = None
+    qmp_socket_path: str | None = None
 
     @property
     def command_line(self) -> str:
         return " ".join(shlex.quote(part) for part in self.command)
+
+    def qmp_client(self) -> "QMPClient":
+        """Return a QMPClient for this VM (caller must manage connection)."""
+        if not self.qmp_socket_path:
+            raise VMProfileError("QMP not enabled for this VM")
+        from .qmp_client import QMPClient
+        return QMPClient(self.qmp_socket_path, timeout=self.profile.qmp_timeout)
 
 
 def _format_policy(policy: str | int) -> str:
@@ -306,8 +321,11 @@ def _build_vsock_device(profile: VMProfile) -> str:
     return f"{device_type},guest-cid={profile.vsock_cid},id=vsock0"
 
 
-def build_qemu_command(profile: VMProfile) -> list[str]:
-    """Build the QEMU argv list for the given profile (does not execute)."""
+def build_qemu_command(profile: VMProfile) -> tuple[list[str], str | None]:
+    """Build the QEMU argv list for the given profile (does not execute).
+
+    Returns a tuple of (command_list, qmp_socket_path_or_None).
+    """
     profile.validate()
     ovmf = profile.resolved_ovmf_path()
     sev_object = _build_sev_snp_guest_object(profile)
@@ -319,8 +337,18 @@ def build_qemu_command(profile: VMProfile) -> list[str]:
         "q35,memory-encryption=sev0,memory-backend=ram1",
         "-cpu",
         "EPYC-v4",
-        "-monitor",
-        "none",
+    ]
+
+    qmp_socket_path: str | None = None
+    if profile.qmp_enabled:
+        from .qmp_client import generate_qmp_socket_path
+        qmp_socket_path = profile.qmp_socket_path or generate_qmp_socket_path(profile)
+        Path(qmp_socket_path).unlink(missing_ok=True)
+        cmd.extend(["-qmp", f"unix:{qmp_socket_path},server,nowait"])
+    else:
+        cmd.extend(["-monitor", "none"])
+
+    cmd.extend([
         "-display",
         "none",
         "-object",
@@ -333,12 +361,12 @@ def build_qemu_command(profile: VMProfile) -> list[str]:
         profile.image_path,
         "-device",
         _build_vsock_device(profile),
-    ]
+    ])
 
     if profile.network_enabled:
         cmd.extend(["-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0"])
 
-    return cmd
+    return cmd, qmp_socket_path
 
 
 def _qemu_pretty_chunks(command: list[str]) -> list[str]:
@@ -399,14 +427,70 @@ def _read_guest_errors(path: str, max_bytes: int = 8192) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def stop_vm(launch: VMLaunchResult, *, signal: int = 15, timeout: float = 10.0) -> None:
-    """Terminate a guest started by :meth:`VMProfile.vm_launch`."""
+def stop_vm(
+    launch: VMLaunchResult,
+    *,
+    graceful: bool = True,
+    graceful_timeout: float = 30.0,
+    signal: int = 15,
+    timeout: float = 10.0,
+) -> None:
+    """Terminate a guest started by :meth:`VMProfile.vm_launch`.
+
+    When ``graceful=True`` and QMP is available, attempts a clean shutdown:
+    1. Send ``system_powerdown`` (ACPI shutdown request)
+    2. Wait up to ``graceful_timeout`` for the VM to exit
+    3. If still running, send ``quit`` to force immediate exit
+    4. Fall back to SIGTERM/SIGKILL if QMP fails
+
+    Always cleans up the QMP socket file.
+    """
+
+    def _cleanup_socket() -> None:
+        if launch.qmp_socket_path:
+            Path(launch.qmp_socket_path).unlink(missing_ok=True)
+
+    def _process_exited() -> bool:
+        if launch.process is None:
+            return True
+        return launch.process.poll() is not None
+
+    if graceful and launch.qmp_socket_path:
+        try:
+            from .qmp_client import QMPClient, QMPError
+
+            with QMPClient(launch.qmp_socket_path, timeout=5.0) as qmp:
+                qmp.system_powerdown()
+
+            deadline = time.monotonic() + graceful_timeout
+            while time.monotonic() < deadline:
+                if _process_exited():
+                    _cleanup_socket()
+                    return
+                time.sleep(0.5)
+
+            try:
+                with QMPClient(launch.qmp_socket_path, timeout=2.0) as qmp:
+                    qmp.quit()
+                time.sleep(0.5)
+                if _process_exited():
+                    _cleanup_socket()
+                    return
+            except QMPError:
+                pass
+        except Exception:
+            pass
+
     if launch.process is None:
         os.kill(launch.pid, signal)
+        _cleanup_socket()
         return
+
     launch.process.terminate()
     try:
         launch.process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         launch.process.kill()
         launch.process.wait(timeout=timeout)
+
+    _cleanup_socket()

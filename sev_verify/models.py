@@ -12,7 +12,7 @@ from typing import Literal, get_args
 StepSeverity = Literal["setup", "required", "info"]
 StepType = StepSeverity
 
-StepKind = Literal["vm_launch", "vm_stop", "host", "guest", "guest_pull", "callable"]
+StepKind = Literal["vm_launch", "vm_stop", "host", "guest", "guest_pull", "callable", "qmp"]
 
 Scope = Literal["host", "guest", "mixed"]
 
@@ -122,6 +122,16 @@ class BaseStep:
                 raise ValueError(
                     f"Step {self.name!r}: callable steps must not set command, guest_src, or host_dest"
                 )
+        elif self.kind == "qmp":
+            if not self.command:
+                raise ValueError(
+                    f"Step {self.name!r}: qmp steps require a non-empty command "
+                    f"(QMP command name, e.g. 'query-status' or 'system_powerdown')"
+                )
+            if self.guest_src or self.host_dest or self.handler:
+                raise ValueError(
+                    f"Step {self.name!r}: qmp steps must only set command"
+                )
 
         _validate_expected_result_format(self.name, self.expected_result)
 
@@ -182,6 +192,9 @@ class Step:
 
     def call(self, handler: str) -> BaseStep:
         return BaseStep(kind="callable", handler=handler, **self._common())
+
+    def qmp(self, command: str) -> BaseStep:
+        return BaseStep(kind="qmp", command=command, **self._common())
 
     @classmethod
     def for_host(
@@ -265,6 +278,20 @@ class Step:
         return cls(
             name=name, type=type, expected_result=expected_result, timeout=timeout
         ).call(handler)
+
+    @classmethod
+    def for_qmp(
+        cls,
+        name: str,
+        type: StepSeverity,
+        command: str,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).qmp(command)
 
 
 @dataclass

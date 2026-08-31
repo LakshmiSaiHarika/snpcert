@@ -27,6 +27,7 @@ from .runner import (
     run_callable_step,
     run_guest_pull_step,
     run_guest_step,
+    run_qmp_step,
     run_step,
     run_vm_launch_step,
     run_vm_stop_step,
@@ -122,6 +123,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Allow making host-level changes, such as changing FW TCB settings.",
+    )
+    parser.add_argument(
+        "--no-qmp",
+        dest="qmp_enabled",
+        action="store_false",
+        default=True,
+        help="Disable QMP (use signal-based VM shutdown instead of graceful ACPI)",
+    )
+    parser.add_argument(
+        "--qmp-timeout",
+        type=float,
+        default=10.0,
+        metavar="SECONDS",
+        help="Timeout for QMP operations (default: 10s)",
     )
     return parser.parse_args(argv)
 
@@ -361,6 +376,8 @@ def execute_test(
     ovmf_path: str | None = None,
     environment: dict[str, str | None] | None = None,
     allow_host_changes: bool = False,
+    qmp_enabled: bool = True,
+    qmp_timeout: float = 10.0,
 ) -> TestResult:
     """Run a test, printing each step live as it executes."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -396,6 +413,8 @@ def execute_test(
                 guest_path,
                 qemu_binary=qemu_binary,
                 ovmf_path=ovmf_path,
+                qmp_enabled=qmp_enabled,
+                qmp_timeout=qmp_timeout,
             )
 
         mod = import_test_module(test)
@@ -495,6 +514,16 @@ def execute_test(
                         sr = run_guest_pull_step(step, launch.profile, artifact_dir)
             elif step.kind == "callable":
                 sr = run_callable_step(step, ctx)
+            elif step.kind == "qmp":
+                if launch is None:
+                    sr = StepResult(
+                        step=step,
+                        result="error",
+                        stderr="qmp step requires a running VM (run vm_launch first)",
+                        duration_ms=0,
+                    )
+                else:
+                    sr = run_qmp_step(step, launch)
             else:
                 sr = StepResult(
                     step=step,
@@ -572,6 +601,8 @@ def execute_certification(
     ovmf_path: str | None = None,
     environment: dict[str, str | None] | None = None,
     allow_host_changes: bool = False,
+    qmp_enabled: bool = True,
+    qmp_timeout: float = 10.0,
 ) -> CertificationResult:
     """Run all tests in a certification with live output."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -600,6 +631,8 @@ def execute_certification(
             ovmf_path=ovmf_path,
             environment=environment,
             allow_host_changes=allow_host_changes,
+            qmp_enabled=qmp_enabled,
+            qmp_timeout=qmp_timeout,
         )
         test_results.append(tr)
         overall = _worse_result(overall, tr.result)
@@ -736,6 +769,8 @@ def main(argv: list[str] | None = None) -> int:
                 ovmf_path=ovmf_override,
                 environment=environment,
                 allow_host_changes=args.allow_host_changes,
+                qmp_enabled=args.qmp_enabled,
+                qmp_timeout=args.qmp_timeout,
             )
             prereq_results.append(tr)
             _flush("")
@@ -772,6 +807,8 @@ def main(argv: list[str] | None = None) -> int:
             ovmf_path=ovmf_override,
             environment=environment,
             allow_host_changes=args.allow_host_changes,
+            qmp_enabled=args.qmp_enabled,
+            qmp_timeout=args.qmp_timeout,
         )
         cert_results.append(cr)
         total_tests += len(cr.test_results)
