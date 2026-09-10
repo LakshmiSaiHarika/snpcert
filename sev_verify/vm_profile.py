@@ -118,6 +118,9 @@ class VMProfile:
     # Fixed SEV-SNP parameters used by the existing launch scripts.
     cbitpos: int = 51
     reduced_phys_bits: int = 1
+    # Debug mode: when True, QEMU captures serial console output to guest_boot_log.
+    # Controlled by the --debug CLI flag.
+    debug: bool = False
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> VMProfile:
@@ -208,10 +211,11 @@ class VMProfile:
 
         error_log = Path(self.guest_error_log)
         error_log.parent.mkdir(parents=True, exist_ok=True)
-        boot_log = Path(self.guest_boot_log)
-        boot_log.parent.mkdir(parents=True, exist_ok=True)
-        # Truncate boot log to avoid stale data from previous runs
-        boot_log.write_bytes(b"")
+        if self.debug:
+            boot_log = Path(self.guest_boot_log)
+            boot_log.parent.mkdir(parents=True, exist_ok=True)
+            # Truncate boot log to avoid stale data from previous runs
+            boot_log.write_bytes(b"")
 
         with open(error_log, "wb") as err_file:
             process = subprocess.Popen(
@@ -356,12 +360,16 @@ def build_qemu_command(profile: VMProfile) -> list[str]:
         profile.image_path,
         "-device",
         _build_vsock_device(profile),
-        # Serial console to capture guest boot logs (dmesg output)
-        "-chardev",
-        f"file,id=serial0,path={profile.guest_boot_log}",
-        "-serial",
-        "chardev:serial0",
     ]
+
+    # Serial console to capture guest boot logs (dmesg output) - only when debug is enabled
+    if profile.debug:
+        cmd.extend([
+            "-chardev",
+            f"file,id=serial0,path={profile.guest_boot_log}",
+            "-serial",
+            "chardev:serial0",
+        ])
 
     if profile.network_enabled:
         cmd.extend(["-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0"])

@@ -382,6 +382,8 @@ def effective_vm_profile(
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
     artifact_dir: Path | None = None,
+    debug: bool = False,
+    guest_id: str | None = None,
 ) -> VMProfile:
     """
     Merge CLI guest path (and optional QEMU / OVMF overrides) into a profile.
@@ -391,7 +393,9 @@ def effective_vm_profile(
     Non-``None`` ``qemu_binary`` / ``ovmf_path`` override the merged profile.
 
     When ``artifact_dir`` is provided, guest log files are written there instead
-    of /tmp to avoid conflicts with concurrent test runs.
+    of /tmp to avoid conflicts with concurrent test runs. When ``debug`` is True
+    and ``guest_id`` is provided, logs are written directly to a per-guest
+    subdirectory (``<artifact_dir>/<guest_id>/``) to avoid copying after launch.
     """
 
     if declared is None:
@@ -403,10 +407,21 @@ def effective_vm_profile(
         base = replace(base, qemu_binary=qemu_binary)
     if ovmf_path is not None:
         base = replace(base, ovmf_path=ovmf_path)
-    if artifact_dir is not None:
+    #if artifact_dir is not None:
+    if debug:
+        # When debug mode is enabled and guest_id is known, write logs directly
+        # to the per-guest subdirectory instead of artifact_dir root.
+        log_dir = artifact_dir
+        if guest_id:
+            log_dir = artifact_dir / guest_id
+            log_dir.mkdir(parents=True, exist_ok=True)
         base = replace(
             base,
-            guest_error_log=str(artifact_dir / "qemu-error.log"),
-            guest_boot_log=str(artifact_dir / "qemu-boot.log"),
+            guest_error_log=str(log_dir / "qemu-error.log"),
+            guest_boot_log=str(log_dir / "qemu-boot.log"),
         )
+    if debug:
+        base = replace(base, debug=True)
+    if guest_id is not None:
+        base = replace(base, guest_id=guest_id)
     return base

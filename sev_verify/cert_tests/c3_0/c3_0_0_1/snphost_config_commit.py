@@ -124,7 +124,12 @@ def _parse_report_tcb_sections(report_path: str) -> dict[str, dict[str, str]]:
 
 
 def _verify_result(mode: str) -> StepHandlerResult:
-    """Compare Reported vs Platform TCB; used by callable steps and the CLI."""
+    """Compare Reported vs Platform TCB; used by callable steps and the CLI.
+
+    TODO: Consider wrapping subprocess.run() in a helper that returns
+    StepHandlerResult directly to reduce duplication and potential for
+    command string drift. See PR #312 discussion for context.
+    """
     cmd = "snphost show tcb"
     proc = _run_snphost_tcb()
     if proc.returncode != 0:

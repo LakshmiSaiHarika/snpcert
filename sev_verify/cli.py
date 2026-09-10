@@ -6,6 +6,7 @@ import argparse
 import sys
 import time
 import tomllib
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -409,6 +410,7 @@ def execute_test(
                 qemu_binary=qemu_binary,
                 ovmf_path=ovmf_path,
                 artifact_dir=artifact_dir,
+                debug=debug,
             )
 
         mod = import_test_module(test)
@@ -457,6 +459,22 @@ def execute_test(
                         duration_ms=0,
                     )
                 else:
+                    # Determine guest_id early so we can set up log paths before launch.
+                    # Priority: step.guest_id > profile.guest_id > generated UUID
+                    effective_guest_id = step.guest_id or profile.guest_id or str(uuid.uuid4())
+                    # Update profile with correct log paths for this guest (writes directly
+                    # to per-guest subdirectory when debug is enabled, avoiding copies)
+                    if debug:
+                        from dataclasses import replace as dc_replace
+                        guest_log_dir = artifact_dir / effective_guest_id
+                        guest_log_dir.mkdir(parents=True, exist_ok=True)
+                        profile = dc_replace(
+                            profile,
+                            guest_id=effective_guest_id,
+                            guest_error_log=str(guest_log_dir / "qemu-error.log"),
+                            guest_boot_log=str(guest_log_dir / "qemu-boot.log"),
+                        )
+                        ctx.profile = profile
                     sr, new_launch = run_vm_launch_step(step, profile)
                     launch = new_launch
                     if launch is not None and launch.ok and environment is not None:
@@ -472,13 +490,14 @@ def execute_test(
                         duration_ms=0,
                     )
                 else:
-                    # Fetch guest journald logs before stopping the VM
-                    try:
-                        journal_result = fetch_guest_journal(launch.profile)
-                        guest_journal_output = journal_result.stdout
-                    except GuestVsockError:
-                        # Guest may have already halted or vsock unavailable
-                        guest_journal_output = None
+                    # Fetch guest journald logs before stopping the VM (only in debug mode)
+                    if debug:
+                        try:
+                            journal_result = fetch_guest_journal(launch.profile)
+                            guest_journal_output = journal_result.stdout
+                        except GuestVsockError:
+                            # Guest may have already halted or vsock unavailable
+                            guest_journal_output = None
                     sr = run_vm_stop_step(step, launch)
                     if sr.result != "error":
                         stopped_launch = launch
@@ -531,12 +550,9 @@ def execute_test(
                 active_launch = stopped_launch if step.kind == "vm_stop" and stopped_launch else launch
                 qemu_cmd = active_launch.command_line if active_launch is not None else None
                 guest_id = active_launch.guest_id if active_launch is not None else None
-                guest_error_log = active_launch.profile.guest_error_log if active_launch is not None else None
-                guest_boot_log = active_launch.profile.guest_boot_log if active_launch is not None else None
                 journal_for_log = guest_journal_output if step.kind == "vm_stop" else None
                 step_logger.log_step(
                     step, sr, command=qemu_cmd, guest_id=guest_id,
-                    guest_error_log_path=guest_error_log, guest_boot_log_path=guest_boot_log,
                     guest_journal=journal_for_log,
                 )
 
