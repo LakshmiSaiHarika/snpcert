@@ -7,8 +7,10 @@ the full feature/spec background.
 """
 
 import re
+import shlex
 import subprocess
 import sys
+import shlex
 
 from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
 from sev_verify.vm_profile import VMProfile
@@ -130,13 +132,12 @@ def _verify_result(mode: str) -> StepHandlerResult:
     StepHandlerResult directly to reduce duplication and potential for
     command string drift. See PR #312 discussion for context.
     """
-    cmd = "snphost show tcb"
     proc = _run_snphost_tcb()
     if proc.returncode != 0:
         return StepHandlerResult(
             exit_code=1,
             stderr=f"snphost show tcb failed: {proc.stderr.strip()}",
-            command=cmd,
+            command=shlex.join(proc.args),
         )
 
     sections = _parse_tcb_sections(proc.stdout)
@@ -151,14 +152,13 @@ def _verify_result(mode: str) -> StepHandlerResult:
             f"  Reported: {reported}",
             f"  Platform: {platform}",
         ]
-        return StepHandlerResult(exit_code=1, stderr="\n".join(lines), command=cmd)
+        return StepHandlerResult(exit_code=1, stderr="\n".join(lines))
     if mode == "verify-differ" and match:
         return StepHandlerResult(
             exit_code=1,
             stderr="FAIL: Reported should differ from Platform after config set",
-            command=cmd,
         )
-    return StepHandlerResult(exit_code=0, command=cmd)
+    return StepHandlerResult(exit_code=0)
 
 
 def verify_match(_ctx: StepContext) -> StepHandlerResult:
@@ -269,6 +269,7 @@ def verify_lowered_report_signature(ctx: StepContext) -> StepHandlerResult:
         return StepHandlerResult(
             exit_code=1,
             stderr=f"snpguest fetch vcek failed{hint}: {stderr}",
+            command=shlex.join(fetch.args),
         )
 
     verify = subprocess.run(
@@ -283,11 +284,13 @@ def verify_lowered_report_signature(ctx: StepContext) -> StepHandlerResult:
             exit_code=1,
             stdout=verify.stdout,
             stderr=f"FAIL: lowered-TCB report not signed by its VCEK: {verify.stderr.strip()}",
+            command=shlex.join(verify.args),
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout=f"Lowered-TCB report signature verified\n  {verify.stdout.strip()}",
+        command=shlex.join(verify.args),
     )
 
 
@@ -360,11 +363,13 @@ def commit_current_tcb(_ctx: StepContext) -> StepHandlerResult:
             exit_code=1,
             stdout=proc.stdout,
             stderr=f"snphost commit failed: {proc.stderr.strip()}",
+            command=shlex.join(proc.args),
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout="snphost commit succeeded",
+        command=shlex.join(proc.args),
     )
 
 
