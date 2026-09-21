@@ -169,11 +169,10 @@ When building OS images with mkosi, two additional metadata files can be generat
 
 Manifest generation is **disabled by default** to reduce build time (~100 seconds). To enable it:
 
-**For local builds**, set the `MKOSI_MANIFEST_FORMAT` environment variable before running mkosi:
+**For local builds**, set the `MKOSI_OUTPUT_MANIFESTFORMAT` environment variable before running mkosi:
 
 ```bash
-export MKOSI_MANIFEST_FORMAT="changelog
-json"
+export MKOSI_OUTPUT_MANIFESTFORMAT="changelog,json"
 mkosi --image-id=guest-<distro>-<release> -C images/guest-<distro>-<release>/ build
 ```
 
