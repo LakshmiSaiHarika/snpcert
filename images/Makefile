@@ -1,4 +1,5 @@
 IMAGES := $(sort $(notdir $(wildcard host-* guest-*)))
+GENERATE_MANIFEST ?= yes
 CLEAN_IMAGES := $(addprefix clean-,$(IMAGES))
 
 GH_AUTH := $(if $(GITHUB_TOKEN),-H "Authorization: Bearer $(GITHUB_TOKEN)")
@@ -19,7 +20,8 @@ tags:
 	}; \
 	{ fetch virtee/snpguest SNPGUEST_TAG; \
 	  fetch AMDEPYC/beacon   BEACON_TAG; \
-	  fetch virtee/snphost   SNPHOST_TAG; } > .tags.tmp; \
+	  fetch virtee/snphost   SNPHOST_TAG; \
+	  echo "GENERATE_MANIFEST=$(GENERATE_MANIFEST)"; } > .tags.tmp; \
 	mv .tags.tmp .tags
 	@cat .tags
 
@@ -42,7 +44,7 @@ status:
 	done
 
 $(IMAGES): | .tags
-	mkosi --image-id=$@ -C $@ --env-file=../.tags build
+	mkosi --image-id=$@ -C $@ --env-file=../.tags build --environment=GENERATE_MANIFEST=$(GENERATE_MANIFEST)
 
 $(CLEAN_IMAGES):
 	mkosi --image-id=$(patsubst clean-%,%,$@) -C $(patsubst clean-%,%,$@) clean

@@ -163,7 +163,20 @@ You should:
 
 ## Build Artifacts: Manifest and Changelog Files
 
-When building OS images with mkosi, two additional metadata files are generated alongside the image: the **manifest** file and the **changelog** file. These files provide detailed information about the packages included in the built image for traceability, debugging, and compliance purposes.
+When building OS images with mkosi, two additional metadata files can be generated alongside the image: the **manifest** file and the **changelog** file. These files provide detailed information about the packages included in the built image for traceability, debugging, and compliance purposes.
+
+### Enabling Manifest Generation (Opt-in)
+
+Manifest generation is **disabled by default** to reduce build time (~100 seconds). To enable it:
+
+**For local builds**, set the `MKOSI_OUTPUT_MANIFESTFORMAT` environment variable before running mkosi:
+
+```bash
+export MKOSI_OUTPUT_MANIFESTFORMAT="changelog json"
+mkosi --image-id=guest-<distro>-<release> -C images/guest-<distro>-<release>/ build
+```
+
+**For CI builds**, check the "Generate package manifest and changelog files" option when manually triggering the `build-and-release` workflow via "Run workflow". When enabled, manifest files are automatically attached to GitHub releases alongside the images.
 
 ### Manifest File (`<image-name>.manifest`)
 
