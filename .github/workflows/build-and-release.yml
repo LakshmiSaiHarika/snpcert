@@ -117,7 +117,7 @@ jobs:
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         env:
-          MKOSI_OUTPUT_MANIFESTFORMAT: ${{ github.event.inputs.generate_manifest == 'true' && 'changelog,json' || '' }}
+          MKOSI_OUTPUT_MANIFESTFORMAT: ${{ github.event.inputs.generate_manifest == 'true' && 'changelog json' || '' }}
         run: |
           sudo -E mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo -E mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
@@ -125,7 +125,7 @@ jobs:
 
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
         env:
-          MKOSI_OUTPUT_MANIFESTFORMAT: ${{ github.event.inputs.generate_manifest == 'true' && 'changelog,json' || '' }}
+          MKOSI_OUTPUT_MANIFESTFORMAT: ${{ github.event.inputs.generate_manifest == 'true' && 'changelog json' || '' }}
         run: |
           sudo -E mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo -E mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
