@@ -6,6 +6,11 @@ on:
         description: 'Replace existing development assets (if any)'
         required: false
         type: boolean
+      generate_os_package_manifest:
+        description: 'Generate OS package manifest and changelog files (adds ~100s to build time)'
+        required: false
+        type: boolean
+        default: false
   pull_request:
   push:  
     paths-ignore:
@@ -54,6 +59,39 @@ jobs:
             gh release create "${TAG}" \
               --title "SEV Certify ${TAG}" \
               --notes "OS images for ${TAG} certification"
+          fi
+
+  create-os-package-manifest-release:
+    name: create OS package manifest release for tagged or latest assets
+    runs-on: ubuntu-latest
+    if: github.event.inputs.generate_os_package_manifest == 'true' && github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Recreate OS package manifest release (replace assets)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="devel-os-package-manifests"
+            gh release delete "${TAG}" --cleanup-tag --yes || true
+            while git fetch --tags --prune-tags; git tag -l | grep "^${TAG}$"; do
+              sleep 2;
+            done
+            gh release create "${TAG}" \
+              --title "Development OS Package Manifests" \
+              --notes "OS Package manifests and changelogs for development image builds." \
+              --prerelease
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}-package-manifests"
+            gh release delete "${TAG}" --cleanup-tag --yes || true
+            while git fetch --tags --prune-tags; git tag -l | grep "^${TAG}$"; do
+              sleep 2;
+            done
+            gh release create "${TAG}" \
+              --title "SEV Certify ${GITHUB_REF#refs/tags/} OS Package Manifests" \
+              --notes "OS Package manifests and changelogs for ${GITHUB_REF#refs/tags/} image builds."
           fi
 
   build:
@@ -114,20 +152,45 @@ jobs:
         run: |
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
-      
+          # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
+          MKOSI_ENV=""
+          case "${{ github.event.inputs.generate_os_package_manifest }}" in
+            true) MKOSI_ENV="$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";;
+          esac
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build $MKOSI_ENV
+
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
         run: |
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
-      
+          # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
+          MKOSI_ENV=""
+          case "${{ github.event.inputs.generate_os_package_manifest }}" in
+            true) MKOSI_ENV="$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";;
+          esac
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build $MKOSI_ENV
+
       - name: Stage artifacts for release (local copy)
         run: |        
           mkdir -p /tmp/release-artifacts
           cp images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.efi
           cp images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.efi
-      
+
+      - name: Stage OS package manifests (if exists)
+        if: github.event.inputs.generate_os_package_manifest == 'true'
+        run: |
+          manifest_extensions=(manifest changelog)
+
+          for ext in "${manifest_extensions[@]}"; do
+            # Copy manifest files for guest image if they exist
+            guest_manifest_file="images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$guest_manifest_file" ]; then cp "$guest_manifest_file" /tmp/release-artifacts/; else echo "Artifact not found: $guest_manifest_file"; fi
+
+            # Copy manifest files for host image if they exist
+            host_manifest_file="images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$host_manifest_file" ]; then cp "$host_manifest_file" /tmp/release-artifacts/; else echo "Artifact not found: $host_manifest_file"; fi
+          done
+
       - name: Upload guest assets (default content type)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
         run: |
@@ -176,5 +239,29 @@ jobs:
             -H "Content-Type: application/vnd.dispatch+efi" \
             --data-binary @"$HOST_FILE" \
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload OS package manifests
+        if: github.event.inputs.generate_os_package_manifest == 'true' && github.event_name == 'workflow_dispatch'
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="devel-os-package-manifests"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}-os-package-manifests"
+          fi
+
+          manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog)
+          if [ ${#manifests[@]} -gt 0 ]; then
+            for manifest in "${manifests[@]}"; do
+              echo "Uploading: $manifest"
+              gh release upload "${TAG}" "$manifest" --clobber
+            done
+          else
+            echo "No manifest files found to upload"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
