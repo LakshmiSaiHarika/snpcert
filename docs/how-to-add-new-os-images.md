@@ -167,16 +167,17 @@ When building OS images with mkosi, two additional metadata files can be generat
 
 ### Enabling Manifest Generation (Opt-in)
 
-Manifest generation is **disabled by default** for local builds to reduce build time (~100 seconds). To enable it, set the `MKOSI_MANIFEST_FORMAT` environment variable before running mkosi:
+Manifest generation is **disabled by default** to reduce build time (~100 seconds). To enable it:
+
+**For local builds**, set the `MKOSI_MANIFEST_FORMAT` environment variable before running mkosi:
 
 ```bash
-# Enable manifest generation for local builds
 export MKOSI_MANIFEST_FORMAT="changelog
 json"
 mkosi --image-id=guest-<distro>-<release> -C images/guest-<distro>-<release>/ build
 ```
 
-**Note:** In CI/release builds, manifest generation is automatically enabled and the manifest files are attached to GitHub releases alongside the images.
+**For CI builds**, check the "Generate package manifest and changelog files" option when manually triggering the `build-and-release` workflow via "Run workflow". When enabled, manifest files are automatically attached to GitHub releases alongside the images.
 
 ### Manifest File (`<image-name>.manifest`)
 
