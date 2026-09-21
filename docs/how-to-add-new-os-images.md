@@ -163,7 +163,34 @@ You should:
 
 ## Build Artifacts: Manifest and Changelog Files
 
-When building OS images with mkosi, two additional metadata files are generated alongside the image: the **manifest** file and the **changelog** file. These files provide detailed information about the packages included in the built image for traceability, debugging, and compliance purposes.
+When building OS images with mkosi, two additional metadata files can be generated alongside the image: the **manifest** file and the **changelog** file. These files provide detailed information about the packages included in the built image for traceability, debugging, and compliance purposes.
+
+### Enabling Manifest Generation (Opt-in)
+
+Manifest generation is **disabled by default** to reduce build time (~100 seconds). To enable it:
+
+**For local builds using Make**, pass `GENERATE_MANIFEST=yes` when invoking make targets:
+
+```bash
+# Build all images with manifest generation
+cd images
+make tags GENERATE_MANIFEST=yes
+make all
+
+# Build a specific image with manifest generation
+make tags GENERATE_MANIFEST=yes
+make guest-<distro>-<release>
+```
+
+The `GENERATE_MANIFEST` variable defaults to `no` in the Makefile. When set to `yes`, it is written to the `.tags` file by `make tags` and passed to mkosi during the build.
+
+**For local builds using mkosi directly**, pass the environment variable:
+
+```bash
+mkosi --image-id=guest-<distro>-<release> -C images/guest-<distro>-<release>/ build --environment=GENERATE_MANIFEST=yes
+```
+
+**For CI builds**, check the "Generate package manifest and changelog files" option when manually triggering the `build-and-release` workflow via "Run workflow". When enabled, manifest files are automatically attached to a separate `devel-manifests` (or `<tag>-manifests`) release alongside the image releases.
 
 ### Manifest File (`<image-name>.manifest`)
 

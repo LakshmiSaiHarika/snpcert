@@ -17,6 +17,7 @@ This queries the GitHub API for the latest release tag of each build dependency 
 | `SNPGUEST_TAG` | [virtee/snpguest](https://github.com/virtee/snpguest) | Guest and host images |
 | `BEACON_TAG` | [AMDEPYC/beacon](https://github.com/AMDEPYC/beacon) | Host images |
 | `SNPHOST_TAG` | [virtee/snphost](https://github.com/virtee/snphost) | Host images |
+| `GENERATE_MANIFEST` | N/A | Controls manifest/changelog generation |
 
 The `.tags` file is passed to mkosi via `--env-file` so each build script uses the pre-fetched tag rather than calling the GitHub API individually. This avoids rate-limit issues when building multiple images (the GitHub API allows 60 unauthenticated requests/hour).
 
@@ -41,6 +42,19 @@ make clean-host-fedora-41    # clean a specific image
 make clean                   # clean every image
 make status                  # show built images and their artifacts
 ```
+
+### Manifest generation (optional)
+
+By default, manifest and changelog files are **not** generated to reduce build time (~100 seconds). To enable them, pass `GENERATE_MANIFEST=yes` when running `make tags`:
+
+```bash
+make tags GENERATE_MANIFEST=yes
+make all
+```
+
+This writes `GENERATE_MANIFEST=yes` to `.tags`, which is then passed to mkosi during the build. The generated files (`.manifest`, `.changelog`, `.json`) provide a Software Bill of Materials (SBOM) for each image.
+
+To disable manifest generation again, re-run `make tags` without the variable (defaults to `no`).
 
 ## Naming
 

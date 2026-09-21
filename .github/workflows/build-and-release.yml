@@ -6,6 +6,11 @@ on:
         description: 'Replace existing development assets (if any)'
         required: false
         type: boolean
+      generate_manifest:
+        description: 'Generate package manifest and changelog files (adds ~100s to build time)'
+        required: false
+        type: boolean
+        default: false
   pull_request:
   push:  
     paths-ignore:
@@ -112,22 +117,38 @@ jobs:
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         run: |
+          MANIFEST_OPT="${{ github.event.inputs.generate_manifest == 'true' && '--environment=GENERATE_MANIFEST=yes' || '' }}"
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
-      
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build $MANIFEST_OPT
+
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
         run: |
+          MANIFEST_OPT="${{ github.event.inputs.generate_manifest == 'true' && '--environment=GENERATE_MANIFEST=yes' || '' }}"
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
-      
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build $MANIFEST_OPT
+
       - name: Stage artifacts for release (local copy)
         run: |        
           mkdir -p /tmp/release-artifacts
           cp images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.efi
           cp images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.efi
-      
+
+      - name: Stage manifest files (if generated)
+        if: github.event.inputs.generate_manifest == 'true'
+        run: |
+          # Copy manifest files for guest image if they exist
+          for ext in manifest changelog json; do
+            src="images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$src" ]; then cp "$src" /tmp/release-artifacts/; else echo "Artifact not found: $src"; fi
+          done
+          # Copy manifest files for host image if they exist
+          for ext in manifest changelog; do
+            src="images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$src" ]; then cp "$src" /tmp/release-artifacts/; else echo "Artifact not found: $src"; fi
+          done
+
       - name: Upload guest assets (default content type)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
         run: |
@@ -176,5 +197,44 @@ jobs:
             -H "Content-Type: application/vnd.dispatch+efi" \
             --data-binary @"$HOST_FILE" \
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload manifests
+        if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true'))
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+
+          # Determine the manifest release tag
+          if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="devel-manifests"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}-manifests"
+          fi
+
+          # Create manifests release if it doesn't exist (handle race condition from parallel jobs)
+          gh release view "${TAG}" &>/dev/null || \
+            gh release create "${TAG}" \
+              --title "Image Manifests (${TAG%-manifests})" \
+              --notes "Package manifests and changelogs for image builds." \
+              --prerelease || true
+
+          # Wait for release to be available
+          for i in {1..5}; do
+            gh release view "${TAG}" &>/dev/null && break
+            sleep 2
+          done
+
+          # Upload all manifest files (.manifest, .changelog, .json)
+          manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog /tmp/release-artifacts/*.json)
+          if [ ${#manifests[@]} -gt 0 ]; then
+            for manifest in "${manifests[@]}"; do
+              echo "Uploading: $manifest"
+              gh release upload "${TAG}" "$manifest" --clobber
+            done
+          else
+            echo "No manifest files found to upload"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
