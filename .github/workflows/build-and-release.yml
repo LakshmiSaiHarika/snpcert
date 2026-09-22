@@ -142,7 +142,7 @@ jobs:
             [ -f "$manifest" ] && cp "$manifest" /tmp/release-artifacts/
           done
       
-      - name: Upload guest assets (default content type)
+      - name: Upload guest image
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
         run: |
           set -euo pipefail
@@ -153,14 +153,10 @@ jobs:
           fi
 
           gh release upload "${TAG}" /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.efi --clobber
-          # Upload manifest files if they exist
-          for manifest in /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.{manifest,changelog}; do
-            [ -f "$manifest" ] && gh release upload "${TAG}" "$manifest" --clobber
-          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload host assets (custom Content-Type)
+
+      - name: Upload host image
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
         run: |
           set -euo pipefail
@@ -170,33 +166,49 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}"
           fi
 
-          # Get the release ID
           RELEASE_ID=$(gh api repos/$GITHUB_REPOSITORY/releases/tags/"${TAG}" --jq .id)
           HOST_FILE="/tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.efi"
           ASSET_NAME=$(basename "$HOST_FILE")
 
-          # Look for an existing asset with the same name
           ASSET_ID=$(gh api \
             repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets \
             --jq ".[] | select(.name==\"$ASSET_NAME\") | .id")
 
-          # If found, delete it
           if [ -n "$ASSET_ID" ]; then
             gh api \
               --method DELETE \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID
-            fi
+          fi
 
-          # Upload the new asset with the correct Content-Type
           curl --fail -sS -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/vnd.dispatch+efi" \
             --data-binary @"$HOST_FILE" \
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # Upload host manifest files if they exist
-          for manifest in /tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.{manifest,changelog}; do
+      - name: Upload manifests
+        if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true'))
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="devel-manifests"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}-manifests"
+          fi
+
+          # Create manifests release if it doesn't exist
+          if ! gh release view "${TAG}" &>/dev/null; then
+            gh release create "${TAG}" \
+              --title "Image Manifests (${TAG%-manifests})" \
+              --notes "Package manifests and changelogs for image builds." \
+              --prerelease
+          fi
+
+          # Upload manifest files
+          for manifest in /tmp/release-artifacts/*.{manifest,changelog,json}; do
             [ -f "$manifest" ] && gh release upload "${TAG}" "$manifest" --clobber
           done
         env:
