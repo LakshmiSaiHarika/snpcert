@@ -116,20 +116,18 @@ jobs:
           sed -i "/^\[Build\]/a\Environment=SNPHOST_TAG=$SNPHOST_TAG" modules/build/host/snphost/mkosi.conf
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
-        env:
-          MKOSI_OUTPUT_MANIFESTFORMAT: ${{ github.event.inputs.generate_manifest == 'true' && 'changelog json' || '' }}
         run: |
-          sudo -E mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
-          sudo -E mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo -E mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
+          MANIFEST_OPT="${{ github.event.inputs.generate_manifest == 'true' && '--environment=GENERATE_MANIFEST' || '' }}"
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ $MANIFEST_OPT cat-config
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ $MANIFEST_OPT summary
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ $MANIFEST_OPT build
 
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
-        env:
-          MKOSI_OUTPUT_MANIFESTFORMAT: ${{ github.event.inputs.generate_manifest == 'true' && 'changelog json' || '' }}
         run: |
-          sudo -E mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
-          sudo -E mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo -E mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
+          MANIFEST_OPT="${{ github.event.inputs.generate_manifest == 'true' && '--environment=GENERATE_MANIFEST' || '' }}"
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ $MANIFEST_OPT cat-config
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ $MANIFEST_OPT summary
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ $MANIFEST_OPT build
       
       - name: Stage artifacts for release (local copy)
         run: |
