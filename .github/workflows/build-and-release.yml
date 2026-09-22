@@ -193,6 +193,7 @@ jobs:
         if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true'))
         run: |
           set -euo pipefail
+          shopt -s nullglob
           if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="devel-manifests"
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
@@ -208,8 +209,13 @@ jobs:
           fi
 
           # Upload manifest files
-          for manifest in /tmp/release-artifacts/*.{manifest,changelog,json}; do
-            [ -f "$manifest" ] && gh release upload "${TAG}" "$manifest" --clobber
-          done
+          manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog /tmp/release-artifacts/*.json)
+          if [ ${#manifests[@]} -gt 0 ]; then
+            for manifest in "${manifests[@]}"; do
+              gh release upload "${TAG}" "$manifest" --clobber
+            done
+          else
+            echo "No manifest files found to upload"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
