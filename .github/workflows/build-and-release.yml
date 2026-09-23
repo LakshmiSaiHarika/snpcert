@@ -141,12 +141,12 @@ jobs:
           # Copy manifest files for guest image if they exist
           for ext in manifest changelog json; do
             src="images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.$ext"
-            [ -f "$src" ] && cp "$src" /tmp/release-artifacts/
+            if [ -f "$src" ]; then cp "$src" /tmp/release-artifacts/; else echo "Artifact not found: $src"; fi
           done
           # Copy manifest files for host image if they exist
-          for ext in manifest changelog json; do
+          for ext in manifest changelog; do
             src="images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.$ext"
-            [ -f "$src" ] && cp "$src" /tmp/release-artifacts/
+            if [ -f "$src" ]; then cp "$src" /tmp/release-artifacts/; else echo "Artifact not found: $src"; fi
           done
 
       - name: Upload guest assets (default content type)
