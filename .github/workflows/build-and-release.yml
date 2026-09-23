@@ -192,7 +192,7 @@ jobs:
       - name: Upload manifests
         if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true'))
         run: |
-          set -euo pipefail
+          set -eo pipefail
           shopt -s nullglob
           if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="devel-manifests"
@@ -200,18 +200,24 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}-manifests"
           fi
 
-          # Create manifests release if it doesn't exist
-          if ! gh release view "${TAG}" &>/dev/null; then
+          # Create manifests release if it doesn't exist (handle race condition)
+          gh release view "${TAG}" &>/dev/null || \
             gh release create "${TAG}" \
               --title "Image Manifests (${TAG%-manifests})" \
               --notes "Package manifests and changelogs for image builds." \
-              --prerelease
-          fi
+              --prerelease || true
+
+          # Wait for release to be available
+          for i in {1..5}; do
+            gh release view "${TAG}" &>/dev/null && break
+            sleep 2
+          done
 
           # Upload manifest files
           manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog /tmp/release-artifacts/*.json)
           if [ ${#manifests[@]} -gt 0 ]; then
             for manifest in "${manifests[@]}"; do
+              echo "Uploading: $manifest"
               gh release upload "${TAG}" "$manifest" --clobber
             done
           else
