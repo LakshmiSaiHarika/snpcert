@@ -169,20 +169,19 @@ When building OS images with mkosi, two additional metadata files can be generat
 
 Manifest generation is **disabled by default** to reduce build time (~100 seconds). To enable it:
 
-**For local builds using Make**, pass `GENERATE_MANIFEST=yes` when invoking make targets:
+**For local builds using Make**, set `GENERATE_MANIFEST` to `y`, `yes`, or `1` when invoking make targets:
 
 ```bash
 # Build all images with manifest generation
 cd images
-make tags GENERATE_MANIFEST=yes
-make all
+make tags
+make GENERATE_MANIFEST=yes all
 
 # Build a specific image with manifest generation
-make tags GENERATE_MANIFEST=yes
-make guest-<distro>-<release>
+make GENERATE_MANIFEST=yes guest-<distro>-<release>
 ```
 
-The `GENERATE_MANIFEST` variable defaults to `no` in the Makefile. When set to `yes`, it is written to the `.tags` file by `make tags` and passed to mkosi during the build.
+The `GENERATE_MANIFEST` variable defaults to empty in the Makefile. When set to a truthy value (`y`, `yes`, or `1`), mkosi is invoked with the environment variable to generate manifest files.
 
 **For local builds using mkosi directly**, pass the environment variable:
 

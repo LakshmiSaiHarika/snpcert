@@ -1,6 +1,5 @@
 IMAGES := $(sort $(notdir $(wildcard host-* guest-*)))
--include .tags
-GENERATE_MANIFEST ?= no
+GENERATE_MANIFEST ?=
 CLEAN_IMAGES := $(addprefix clean-,$(IMAGES))
 
 GH_AUTH := $(if $(GITHUB_TOKEN),-H "Authorization: Bearer $(GITHUB_TOKEN)")
@@ -21,8 +20,7 @@ tags:
 	}; \
 	{ fetch virtee/snpguest SNPGUEST_TAG; \
 	  fetch AMDEPYC/beacon   BEACON_TAG; \
-	  fetch virtee/snphost   SNPHOST_TAG; \
-	  echo "GENERATE_MANIFEST=$(GENERATE_MANIFEST)"; } > .tags.tmp; \
+	  fetch virtee/snphost   SNPHOST_TAG; } > .tags.tmp; \
 	mv .tags.tmp .tags
 	@cat .tags
 
@@ -44,12 +42,13 @@ status:
 		fi; \
 	done
 
+# MKOSI_ENV accumulates --environment flags; add new case blocks to extend
 $(IMAGES): | .tags
-	@if [ "$(GENERATE_MANIFEST)" = "yes" ]; then \
-		mkosi --image-id=$@ -C $@ --env-file=../.tags build --environment=GENERATE_MANIFEST=yes; \
-	else \
-		mkosi --image-id=$@ -C $@ --env-file=../.tags build; \
-	fi
+	@MKOSI_ENV=""; \
+	case "$(GENERATE_MANIFEST)" in \
+		y|yes|1) MKOSI_ENV="$$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";; \
+	esac; \
+	mkosi --image-id=$@ -C $@ --env-file=../.tags build $$MKOSI_ENV
 
 $(CLEAN_IMAGES):
 	mkosi --image-id=$(patsubst clean-%,%,$@) -C $(patsubst clean-%,%,$@) clean

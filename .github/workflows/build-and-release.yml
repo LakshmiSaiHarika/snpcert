@@ -64,7 +64,7 @@ jobs:
   create-package-manifest-release:
     name: create package manifest release for tagged or latest assets
     runs-on: ubuntu-latest
-    if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.event.inputs.generate_manifest == 'true' && github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -80,8 +80,8 @@ jobs:
               sleep 2;
             done
             gh release create "${TAG}" \
-              --title "Development Package Manifests" \
-              --notes "Package manifests and changelogs for development image builds." \
+              --title "Development OS Package Manifests" \
+              --notes "OS Package manifests and changelogs for development image builds." \
               --prerelease
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}-package-manifests"
@@ -90,8 +90,8 @@ jobs:
               sleep 2;
             done
             gh release create "${TAG}" \
-              --title "SEV Certify ${GITHUB_REF#refs/tags/} Manifests" \
-              --notes "Package manifests and changelogs for ${GITHUB_REF#refs/tags/} image builds."
+              --title "SEV Certify ${GITHUB_REF#refs/tags/} OS Package Manifests" \
+              --notes "OS Package manifests and changelogs for ${GITHUB_REF#refs/tags/} image builds."
           fi
 
   build:
@@ -152,21 +152,23 @@ jobs:
         run: |
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          if [ "${{ github.event.inputs.generate_manifest }}" = "true" ]; then
-            sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build --environment=GENERATE_MANIFEST=yes
-          else
-            sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
-          fi
+          # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
+          MKOSI_ENV=""
+          case "${{ github.event.inputs.generate_manifest }}" in
+            true) MKOSI_ENV="$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";;
+          esac
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build $MKOSI_ENV
 
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
         run: |
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          if [ "${{ github.event.inputs.generate_manifest }}" = "true" ]; then
-            sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build --environment=GENERATE_MANIFEST=yes
-          else
-            sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
-          fi
+          # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
+          MKOSI_ENV=""
+          case "${{ github.event.inputs.generate_manifest }}" in
+            true) MKOSI_ENV="$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";;
+          esac
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build $MKOSI_ENV
 
       - name: Stage artifacts for release (local copy)
         run: |        
@@ -177,15 +179,16 @@ jobs:
       - name: Stage manifest files (if generated)
         if: github.event.inputs.generate_manifest == 'true'
         run: |
-          # Copy manifest files for guest image if they exist
-          for ext in manifest changelog json; do
-            src="images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.$ext"
-            if [ -f "$src" ]; then cp "$src" /tmp/release-artifacts/; else echo "Artifact not found: $src"; fi
-          done
-          # Copy manifest files for host image if they exist
-          for ext in manifest changelog; do
-            src="images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.$ext"
-            if [ -f "$src" ]; then cp "$src" /tmp/release-artifacts/; else echo "Artifact not found: $src"; fi
+          manifest_extensions=(manifest changelog)
+
+          for ext in "${manifest_extensions[@]}"; do
+            # Copy manifest files for guest image if they exist
+            guest_manifest_file="images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$guest_manifest_file" ]; then cp "$guest_manifest_file" /tmp/release-artifacts/; else echo "Artifact not found: $guest_manifest_file"; fi
+
+            # Copy manifest files for host image if they exist
+            host_manifest_file="images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$host_manifest_file" ]; then cp "$host_manifest_file" /tmp/release-artifacts/; else echo "Artifact not found: $host_manifest_file"; fi
           done
 
       - name: Upload guest assets (default content type)
@@ -240,18 +243,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload package manifests
-        if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true'))
+        if: github.event.inputs.generate_manifest == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true'
         run: |
           set -eo pipefail
           shopt -s nullglob
 
           if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAG="devel-package-manifests"
+            TAG="devel-os-package-manifests"
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}-package-manifests"
+            TAG="${GITHUB_REF#refs/tags/}-os-package-manifests"
           fi
 
-          manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog /tmp/release-artifacts/*.json)
+          manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog)
           if [ ${#manifests[@]} -gt 0 ]; then
             for manifest in "${manifests[@]}"; do
               echo "Uploading: $manifest"
