@@ -61,6 +61,37 @@ jobs:
               --notes "OS images for ${TAG} certification"
           fi
 
+  upload-manifests:
+    name: upload manifests (replace if exists)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.generate_manifest == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Create manifest release and upload manifests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="devel-manifests"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}-manifests"
+          fi
+
+          if gh release view "${TAG}" &>/dev/null; then
+            echo "Manifest release already exists: ${TAG}"
+            echo "Existing assets will be replaced by build jobs (--clobber)"
+          else
+            echo "Creating manifest release: ${TAG}"
+            gh release create "${TAG}" \
+              --title "Image Manifests (${TAG%-manifests})" \
+              --notes "Package manifests and changelogs for image builds." \
+              --prerelease
+          fi
+
   build:
     name: ${{ matrix.distro }}-${{ matrix.release }}
     runs-on: ubuntu-24.04
@@ -206,27 +237,19 @@ jobs:
           set -eo pipefail
           shopt -s nullglob
 
-          # Determine the manifest release tag
           if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             TAG="devel-manifests"
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}-manifests"
           fi
 
-          # Create manifests release if it doesn't exist (handle race condition from parallel jobs)
-          gh release view "${TAG}" &>/dev/null || \
-            gh release create "${TAG}" \
-              --title "Image Manifests (${TAG%-manifests})" \
-              --notes "Package manifests and changelogs for image builds." \
-              --prerelease || true
-
-          # Wait for release to be available
-          for i in {1..5}; do
+          # Wait for release to be available (created by cleanup-manifest-release job)
+          for i in {1..10}; do
             gh release view "${TAG}" &>/dev/null && break
-            sleep 2
+            echo "Waiting for manifest release to be available..."
+            sleep 3
           done
 
-          # Upload all manifest files (.manifest, .changelog, .json)
           manifests=(/tmp/release-artifacts/*.manifest /tmp/release-artifacts/*.changelog /tmp/release-artifacts/*.json)
           if [ ${#manifests[@]} -gt 0 ]; then
             for manifest in "${manifests[@]}"; do

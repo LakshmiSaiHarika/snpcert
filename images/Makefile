@@ -45,7 +45,7 @@ status:
 	done
 
 $(IMAGES): | .tags
-	/home/amd/mkosi-v26/mkosi/bin/mkosi --image-id=$@ -C $@ --env-file=../.tags build --environment=GENERATE_MANIFEST=$(GENERATE_MANIFEST)
+	mkosi --image-id=$@ -C $@ --env-file=../.tags build --environment=GENERATE_MANIFEST=$(GENERATE_MANIFEST)
 
 $(CLEAN_IMAGES):
-	/home/amd/mkosi-v26/mkosi/bin/mkosi --image-id=$(patsubst clean-%,%,$@) -C $(patsubst clean-%,%,$@) clean
+	mkosi --image-id=$(patsubst clean-%,%,$@) -C $(patsubst clean-%,%,$@) clean
