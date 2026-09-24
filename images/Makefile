@@ -45,7 +45,11 @@ status:
 	done
 
 $(IMAGES): | .tags
-	mkosi --image-id=$@ -C $@ --env-file=../.tags build --environment=GENERATE_MANIFEST=$(GENERATE_MANIFEST)
+	@if [ "$(GENERATE_MANIFEST)" = "yes" ]; then \
+		mkosi --image-id=$@ -C $@ --env-file=../.tags build --environment=GENERATE_MANIFEST=yes; \
+	else \
+		mkosi --image-id=$@ -C $@ --env-file=../.tags build; \
+	fi
 
 $(CLEAN_IMAGES):
 	mkosi --image-id=$(patsubst clean-%,%,$@) -C $(patsubst clean-%,%,$@) clean

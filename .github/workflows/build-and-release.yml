@@ -150,17 +150,23 @@ jobs:
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         run: |
-          MANIFEST_OPT="${{ github.event.inputs.generate_manifest == 'true' && '--environment=GENERATE_MANIFEST=yes' || '' }}"
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build $MANIFEST_OPT
+          if [ "${{ github.event.inputs.generate_manifest }}" = "true" ]; then
+            sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build --environment=GENERATE_MANIFEST=yes
+          else
+            sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
+          fi
 
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
         run: |
-          MANIFEST_OPT="${{ github.event.inputs.generate_manifest == 'true' && '--environment=GENERATE_MANIFEST=yes' || '' }}"
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build $MANIFEST_OPT
+          if [ "${{ github.event.inputs.generate_manifest }}" = "true" ]; then
+            sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build --environment=GENERATE_MANIFEST=yes
+          else
+            sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
+          fi
 
       - name: Stage artifacts for release (local copy)
         run: |        
