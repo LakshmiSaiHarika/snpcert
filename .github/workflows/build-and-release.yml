@@ -27,9 +27,78 @@ permissions:
   actions: read    # Required for workflow access
 
 jobs:
+  # Resolve component versions once: pinned in versions.env, else upstream latest
+  resolve-tags:
+    name: resolve component tags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      snphost: ${{ steps.resolve.outputs.snphost }}
+      snpguest: ${{ steps.resolve.outputs.snpguest }}
+      beacon: ${{ steps.resolve.outputs.beacon }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tags (pin from versions.env, fallback to latest)
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Reject anything other than comments, blank lines and NAME=TAG for known names,
+          # so a typo'd name doesn't silently fall back to the upstream latest release
+          if bad=$(grep -nvE '^[[:space:]]*(#|$)|^(SNPHOST_TAG|SNPGUEST_TAG|BEACON_TAG)=[^[:space:]]*$' versions.env); then
+            echo "::error file=versions.env::Unexpected line(s); expected NAME=TAG with NAME one of SNPHOST_TAG, SNPGUEST_TAG, BEACON_TAG"
+            echo "$bad" >&2
+            exit 1
+          fi
+          . versions.env
+
+          # Pinned tags are looked up too, so a typo'd tag fails here rather than mid-build
+          resolve() {  # $1=repo $2=pinned tag
+            gh release view ${2:+"$2"} --repo "$1" --json tagName --jq '.tagName' || {
+              echo "::error file=versions.env::Failed to resolve release ${2:-latest} of $1" >&2
+              return 1
+            }
+          }
+
+          # Assign first so a failing resolve aborts the step under set -e
+          snphost=$(resolve virtee/snphost "${SNPHOST_TAG:-}")
+          snpguest=$(resolve virtee/snpguest "${SNPGUEST_TAG:-}")
+          beacon=$(resolve AMDEPYC/beacon "${BEACON_TAG:-}")
+
+          for pair in "virtee/snphost=$snphost" "virtee/snpguest=$snpguest" "AMDEPYC/beacon=$beacon"; do
+            tag=${pair#*=}
+            if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+              echo "::error::Failed to resolve release tag for ${pair%%=*}"
+              exit 1
+            fi
+          done
+
+          {
+            echo "snphost=$snphost"
+            echo "snpguest=$snpguest"
+            echo "beacon=$beacon"
+          } >> "$GITHUB_OUTPUT"
+
+          source_of() { if [ -n "$1" ]; then echo "pinned"; else echo "latest"; fi; }
+          {
+            echo "### Resolved component versions"
+            echo
+            echo "| Repository | Version | Source |"
+            echo "|---|---|---|"
+            echo "| virtee/snphost | $snphost | $(source_of "${SNPHOST_TAG:-}") |"
+            echo "| virtee/snpguest | $snpguest | $(source_of "${SNPGUEST_TAG:-}") |"
+            echo "| AMDEPYC/beacon | $beacon | $(source_of "${BEACON_TAG:-}") |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Development release for tag or main pushes
   create-release:
     name: create new release for tagged or latest assets
+    needs: resolve-tags
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
     steps:
@@ -63,6 +132,7 @@ jobs:
 
   build:
     name: ${{ matrix.distro }}-${{ matrix.release }}
+    needs: resolve-tags
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -99,17 +169,16 @@ jobs:
           sudo apt update
           sudo apt install -y mkosi
 
-      - name: Fetch latest release tags
+      - name: Apply resolved release tags
+        # Tags resolved once by the resolve-tags job (pinned in versions.env, else upstream latest).
+        # Passed via env rather than interpolated into the script to avoid shell injection.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SNPGUEST_TAG: ${{ needs.resolve-tags.outputs.snpguest }}
+          BEACON_TAG: ${{ needs.resolve-tags.outputs.beacon }}
+          SNPHOST_TAG: ${{ needs.resolve-tags.outputs.snphost }}
         run: |
           set -euo pipefail
-          
-          # Fetch latest tags using gh CLI (automatically authenticated)
-          SNPGUEST_TAG=$(gh release view --repo virtee/snpguest --json tagName --jq '.tagName')
-          BEACON_TAG=$(gh release view --repo AMDEPYC/beacon --json tagName --jq '.tagName')
-          SNPHOST_TAG=$(gh release view --repo virtee/snphost --json tagName --jq '.tagName')
-          
+
           # Inject environment variables into mkosi.conf files
           sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
           sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/build/host/beacon/mkosi.conf
