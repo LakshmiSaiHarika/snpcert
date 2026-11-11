@@ -36,3 +36,11 @@ scope = "mixed"
 level = "3.0.0-1"
 
 # ── Level 3.0.0-2 ───────────────────────────────────────────
+
+[[tests]]
+name = "configfs-tsm"
+description = "Generate and verify attestation reports through configfs-tsm, and check a report reflects a lowered Reported TCB"
+module = "cert_tests.c3_0.c3_0_0_2.configfs_tsm"
+scope = "mixed"
+level = "3.0.0-2"
+host_changes = true
