@@ -1,6 +1,6 @@
 # ConfigFS-TSM (Trusted Security Module via ConfigFS)
 
-**Description:** A Linux kernel interface that generates SEV-SNP attestation reports through the `/sys/kernel/config/tsm` filesystem. It provides a standardized, filesystem-based API for attestation that works across different confidential computing technologies, replacing the earlier `sev-guest` ioctl interface.  
+**Description:** A Linux kernel interface that generates SEV-SNP attestation reports through the `/sys/kernel/config/tsm` filesystem. It provides a standardized, filesystem-based API for attestation that works across different confidential computing technologies. This is the modern interface; the earlier `sev-guest` ioctl interface remains supported but is not recommended for new code.  
 **When to Use:** When generating attestation reports from inside an SNP guest using the Linux kernel's TSM (Trusted Security Module) framework. The configfs-tsm interface is the modern, kernel-standardized approach for attestation.  
 **How to Use:** Mount configfs filesystem, create report directories under `/sys/kernel/config/tsm/report/`, write nonce data to `inblob`, read the generated attestation report from `outblob`.  
 **What sev-certify tests:** Basic attestation report generation via configfs-tsm, generation counter tracking, certificate chain verification, and a Reported TCB check that confirms the attestation report reflects host TCB changes.
@@ -16,7 +16,7 @@ For SEV-SNP guests, the TSM backend is implemented by the `tsm_report` kernel mo
 1. **Mount configfs** (if not already mounted): `mount -t configfs none /sys/kernel/config`
 2. **Create a report directory**: `mkdir /sys/kernel/config/tsm/report/<name>` — each directory represents one attestation report request.
 3. **Write request data**: Write a nonce (up to 64 bytes) to the `inblob` file. This becomes the attestation report's `REPORT_DATA` field.
-4. **Track generation**: The `generation` file is a counter that starts at 0 and increments by 1 each time `inblob` is written, confirming the write succeeded.
+4. **Track generation**: The `generation` file is a counter that starts at 0 and increments by 1 each time `inblob` is written successfully.
 5. **Read the report**: Reading `outblob` generates the attestation report and returns it as binary data.
 
 The report structure, signing, and TCB fields are identical to those from `snpguest report` — configfs-tsm is simply a different interface to the same underlying firmware command (`SNP_GUEST_REQUEST` / `MSG_REPORT_REQ`).
@@ -130,7 +130,7 @@ It is a **mixed-scope** test that exercises both guest-side report generation an
    - Lower the host's Reported TCB by reducing Boot Loader by 1 via `snphost config set`
    - Save the modified host TCB to `host_tcb_v2.json`
    - Verify the host's Reported TCB reflects the change while Platform TCB remains unchanged
-   - Generate a second report from the **same live guest** via configfs-tsm:
+   - Generate a second report from the **same live guest** via configfs-tsm (reusing the same guest preserves its `LAUNCH_TCB` so the test can isolate the `REPORTED_TCB` change; a new guest would capture the modified TCB as its `LAUNCH_TCB`, invalidating the comparison):
      - Create `/sys/kernel/config/tsm/report/reported_tcb_check`
      - Verify generation tracking (0 → 1)
      - Write nonce, read outblob, pull `attestation_report_reported_tcb_test.bin`
@@ -263,9 +263,9 @@ configfs-tsm and the older `/dev/sev-guest` ioctl both generate attestation repo
 | **User Tools** | Standard shell (`cat`, `dd`, `tee`) | Device-specific tools (`snpguest`) |
 | **Portability** | Works with TDX, SEV, other TSM providers | SEV-only |
 | **Adoption** | Modern, recommended for new code | Legacy, still supported |
-| **Report Format** | Identical (same firmware command) | Identical |
+| **Report Format (SEV)** | Identical (same firmware command) | Identical |
 
-Both produce the same `ATTESTATION_REPORT` structure and are signed by the same VCEK. Verifiers cannot distinguish which interface was used.
+For SEV-SNP, both produce the same `ATTESTATION_REPORT` structure and are signed by the same VCEK. Verifiers cannot distinguish which interface was used. Other TSM providers (TDX, etc.) have different report structures.
 
 ---
 
@@ -281,7 +281,7 @@ Both produce the same `ATTESTATION_REPORT` structure and are signed by the same 
 
 ## Known Quirks
 
-- **Generation counter does not reset.** Once a directory is created, its `generation` starts at 0, but removing and recreating the directory resets it. The test relies on fresh directories (generation 0) for each report.
+- **Generation counter persists within a directory.** Once a directory is created, its `generation` starts at 0 and increments with each `inblob` write. Removing and recreating the directory resets it back to 0. The test relies on fresh directories (generation 0) for each report.
 - **Module name varies by kernel version.** Older kernels use `tsm`, newer ones use `tsm_report`. The test checks for both, and also accepts `CONFIG_TSM_REPORTS=y` (built-in, no module).
 - **No sudo in guest.** The guest image runs the agent as root, so `sudo` is not used in guest commands. If testing on a non-root guest, prefix the configfs commands with `sudo`.
 - **snphost `-o json` requires a recent build.** The test uses `snphost show tcb -o json` and will fail with older builds. Set `$SNPHOST` to point to a newer binary if the system `snphost` lacks JSON output support.
@@ -303,7 +303,7 @@ Both produce the same `ATTESTATION_REPORT` structure and are signed by the same 
 **outblob** — The read-only file in a configfs-tsm report directory. Reading it returns the binary attestation report. The report is regenerated on each read (generation does not increment; only `inblob` writes bump it).
 
 <a id="reported-tcb"></a>
-**Reported TCB** — The TCB version the host reports via `snphost show tcb`. It determines which VCEK signs attestation reports. Can be lowered via `snphost config set` for VCEK management (the change is in-memory only and resets on reboot). See the [TCB Config & Commit](tcb-config-commit.md) feature page.
+**Reported TCB** — The TCB version the host reports via `snphost show tcb`. It determines which [VCEK](#vcek) signs attestation reports. Can be lowered via `snphost config set` for VCEK management (the change is in-memory only and resets on reboot). See the [TCB Config & Commit](tcb-config-commit.md) feature page.
 
 <a id="sev-guest-driver"></a>
 **sev-guest driver** — The Linux kernel driver (`/dev/sev-guest`, `CONFIG_SEV_GUEST`) that interfaces with the SEV-SNP firmware. It provides both the ioctl interface and the TSM provider backend for configfs-tsm.

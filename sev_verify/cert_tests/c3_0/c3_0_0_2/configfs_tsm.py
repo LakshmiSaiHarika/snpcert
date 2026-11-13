@@ -5,22 +5,23 @@ Mixed-scope test:
 1. On host, save the original host TCB in ``host_tcb_v1.json`` via snphost show tcb -o json``.
 2. Launch SNP-enabled guest.
 3. On the guest, perform enablement checks — check for TSM report module, sev-guest driver, and if configfs filesystem is mounted.
-4. On the guest, generate an Attestation Report through ``/sys/kernel/config/tsm/report``. 
+4. On the guest, generate an Attestation Report through ``/sys/kernel/config/tsm/report``.
    Prior to the generation of an Attestation Report, track the report generation, which should be 0 initially.
    Write a `nonce` data to the inblob, then check if the report generation is exactly 1 higher than the previous report generation.
    Read ``outblob`` to generate the Attestation report via configfs-tsm, and then pull the Attestation Report Report into the host.
 5. On the host,save the report and fetch ARK/ASK/VCEK from KDS and verify the certificate chain.
 6. Then, perform Reported TCB check, where we:
-   track the original host TCB in ``host_tcb_v1.json``, 
+   track the original host TCB in ``host_tcb_v1.json``,
    then modify the host TCB by reducing only Boot Loader by 1 via ``snphost config set` & save the modified host TCB in ``host_tcb_v2.json``,
-   later generate a second new attestation report via configfs-tsm module from the same guest and verify its certificate chain, 
+   later generate a second new attestation report via configfs-tsm module from the same guest and verify its certificate chain,
    and check if the Attestation Report's `Reported TCB` matches the host's.
 7. Then revert the host TCB to its original value and perform ``snphost ok`` to see if Reported TCB is back in line.
 
 The JSON output (``-o json``) needs a recent snphost. Set ``$SNPHOST`` to use a
-binary that is not on ``PATH``::
+binary that is not on ``PATH``. The image path is configured via the guest image
+passed to the test harness::
 
-    SNPHOST=/path/to/snphost python3 -m sev_verify GUEST.EFI -v 3.0.0-2 \\
+    SNPHOST=/path/to/snphost python3 -m sev_verify path/to/guest.efi -v 3.0.0-2 \\
         --allow-host-changes
 """
 
@@ -42,10 +43,14 @@ _SNPHOST_SHELL = '"${SNPHOST:-snphost}"'
 _TSM_REPORT_ROOT = "/sys/kernel/config/tsm/report"
 
 # configfs-tsm report entries (directory names under _TSM_REPORT_ROOT).
+# These are created as subdirectories during the test; each represents one
+# independent report generation workflow with its own generation counter.
 _ATTEST_ENTRY = "configfs_tsm_attestation_report"
 _TCB_CHECK_ENTRY = "reported_tcb_check"
 
 # Report file names: /root/<name> on the guest, <name> in the artifact dir.
+# The naming convention: _ATTEST_* for baseline report, _TCB_CHECK_* for
+# the second report generated after host TCB modification.
 _ATTEST_REPORT = "configfs_tsm_attestation_report.bin"
 _TCB_CHECK_REPORT = "attestation_report_reported_tcb_test.bin"
 _TCB_CHECK_REPORT_JSON = "attestation_report_reported_tcb_test.json"
@@ -169,19 +174,24 @@ def _verify_updated_generation(ctx: StepContext, entry: str) -> StepHandlerResul
 
 
 # The harness calls handlers by name with ctx only, hence one wrapper per entry.
+# Each handler validates generation counters for its corresponding report entry.
 def verify_attest_original_generation(ctx: StepContext) -> StepHandlerResult:
+    """Verify baseline attestation report entry starts at generation 0."""
     return _verify_original_generation(ctx, _ATTEST_ENTRY)
 
 
 def verify_attest_updated_generation(ctx: StepContext) -> StepHandlerResult:
+    """Verify baseline attestation report generation advanced by 1 after inblob write."""
     return _verify_updated_generation(ctx, _ATTEST_ENTRY)
 
 
 def verify_tcb_check_original_generation(ctx: StepContext) -> StepHandlerResult:
+    """Verify TCB check report entry starts at generation 0."""
     return _verify_original_generation(ctx, _TCB_CHECK_ENTRY)
 
 
 def verify_tcb_check_updated_generation(ctx: StepContext) -> StepHandlerResult:
+    """Verify TCB check report generation advanced by 1 after inblob write."""
     return _verify_updated_generation(ctx, _TCB_CHECK_ENTRY)
 
 
@@ -245,7 +255,11 @@ def _configfs_tsm_report_steps(
             handler=verify_updated,
             timeout=30,
         ),
-        # Reading outblob generates the report.
+        # Reading outblob generates the report. The 300s timeout accounts for:
+        # - PSP firmware report generation (~1-5s typical)
+        # - Potential firmware queueing under load
+        # - Network file transfer on slow connections
+        # Most runs complete in <10s, but we allow generous headroom.
         Step.for_guest(
             name=f"{entry}: read outblob",
             type=step_type,
@@ -295,7 +309,12 @@ def _verify_certs_steps(report: str, certs_dir: str) -> list[BaseStep]:
 
 
 def config_set_lower_bootloader(ctx: StepContext) -> StepHandlerResult:
-    """Set the Platform TCB from host_tcb_v1.json with Boot Loader lowered by 1."""
+    """Set the Platform TCB from host_tcb_v1.json with Boot Loader lowered by 1.
+
+    This modifies the in-memory Reported TCB on the host via snphost config set.
+    The change affects which VCEK signs subsequent attestation reports but does
+    not modify the Platform TCB (the actual firmware/microcode versions).
+    """
     try:
         tcb = _load_host_tcb(ctx, _TCB_V1)["platform_tcb"]
         bl = int(tcb["bootloader"])
@@ -303,8 +322,10 @@ def config_set_lower_bootloader(ctx: StepContext) -> StepHandlerResult:
         snp = int(tcb["snp_fw"])
         ucode = int(tcb["microcode"])
         fmc = tcb.get("fmc")
-    except (ValueError, KeyError, TypeError) as e:
-        return StepHandlerResult(exit_code=1, stderr=str(e))
+    except KeyError as e:
+        return StepHandlerResult(exit_code=1, stderr=f"Missing TCB field in {_TCB_V1}: {e}")
+    except (ValueError, TypeError) as e:
+        return StepHandlerResult(exit_code=1, stderr=f"Invalid TCB value in {_TCB_V1}: {e}")
 
     if bl == 0:
         return StepHandlerResult(
@@ -313,12 +334,20 @@ def config_set_lower_bootloader(ctx: StepContext) -> StepHandlerResult:
         )
 
     # Positional args: bootloader tee snp-fw microcode mask-chip [fmc].
-    # FMC is null on pre-Turin parts and must be omitted there.
+    # FMC is null on pre-Turin parts and must be omitted from the args list.
     args = [_snphost(), "config", "set", str(bl - 1), str(tee), str(snp), str(ucode), "0"]
     if fmc is not None:
         args.append(str(int(fmc)))
 
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return StepHandlerResult(
+            exit_code=1,
+            stderr="snphost config set timed out after 30s",
+            command=shlex.join(args),
+        )
+
     cmd = shlex.join(proc.args)
     if proc.returncode != 0:
         return StepHandlerResult(
@@ -330,7 +359,7 @@ def config_set_lower_bootloader(ctx: StepContext) -> StepHandlerResult:
 
     return StepHandlerResult(
         exit_code=0,
-        stdout=f"Boot Loader TCB lowered {bl} -> {bl - 1}",
+        stdout=f"Boot Loader TCB lowered {bl} -> {bl - 1}\n\nNote: Next step will verify the change took effect.",
         command=cmd,
     )
 
@@ -454,13 +483,12 @@ def steps() -> list[BaseStep]:
             command="snpguest ok",
             timeout=60,
         ),
-        # Mount configfs unless the tsm tree is already visible
+        # Mount configfs (idempotent: succeeds if already mounted)
         Step.for_guest(
             name="mount-configfs",
             type="setup",
             command=(
-                "if [ ! -d /sys/kernel/config/tsm ]; then"
-                " mount -t configfs none /sys/kernel/config; fi;"
+                "mount -t configfs none /sys/kernel/config 2>/dev/null || true;"
                 " ls /sys/kernel/config/tsm"
             ),
             timeout=30,
@@ -519,12 +547,6 @@ def steps() -> list[BaseStep]:
             "verify_tcb_check_original_generation",
             "verify_tcb_check_updated_generation",
         ),
-        # Guest no longer needed.
-        Step.for_vm_stop(
-            name="Stop VM",
-            type="info",
-            timeout=60,
-        ),
         # Verify the new Attestation Report
         # Save the new Attestation Report
         Step.for_host(
@@ -538,13 +560,19 @@ def steps() -> list[BaseStep]:
         ),
         # Perform Attestation workflow for the new Attestation Report
         *_verify_certs_steps(_TCB_CHECK_REPORT, "certs_reported_tcb"),
-        
+
         # Perform Reported TCB Check to validate if Reported TCB components match
         Step.for_callable(
             name="reported-tcb-check",
             type="required",
             handler="reported_tcb_check",
             timeout=30,
+        ),
+        # Guest no longer needed after all verification completes.
+        Step.for_vm_stop(
+            name="Stop VM",
+            type="info",
+            timeout=60,
         ),
         # 7. Restore TCB and confirm Reported TCB is back in line.
         Step.for_host(
