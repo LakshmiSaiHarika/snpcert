@@ -10,7 +10,7 @@ mkosi image definitions for SEV-SNP host and guest environments. Each subdirecto
 make tags
 ```
 
-This queries the GitHub API for the latest release tag of each build dependency and writes them to `.tags`:
+This writes the release tag of each build dependency to `.tags`. Tags come from [`versions.env`](../versions.env), so they are not necessarily the latest upstream release. If an entry is left empty, the latest upstream release is fetched from the GitHub API instead:
 
 | Variable | Repository | Used by |
 |---|---|---|
@@ -20,7 +20,7 @@ This queries the GitHub API for the latest release tag of each build dependency 
 
 The `.tags` file is passed to mkosi via `--env-file` so each build script uses the pre-fetched tag rather than calling the GitHub API individually. This avoids rate-limit issues when building multiple images (the GitHub API allows 60 unauthenticated requests/hour).
 
-Re-run `make tags` whenever you want to pick up a new release of one of the dependencies. The `.tags` file is not checked in, so it won't update automatically.
+Re-run `make tags` after changing `versions.env` (or, for unpinned entries, to pick up a new upstream release). The `.tags` file is not checked in, so it won't update automatically.
 
 If you hit rate limits, set a token first:
 
@@ -29,7 +29,7 @@ export GITHUB_TOKEN=$(gh auth token)
 make tags
 ```
 
-> **Note**: In CI, the workflow fetches these same tags and injects them directly into mkosi configs, so `make tags` is only needed for local builds.
+> **Note**: In CI, the `resolve-tags` job of the `build-and-release` workflow resolves these same tags from `versions.env` and the build jobs inject them directly into mkosi configs, so `make tags` is only needed for local builds.
 
 ### 2. Build images
 
