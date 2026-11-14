@@ -4,13 +4,9 @@ mkosi image definitions for SEV-SNP host and guest environments. Each subdirecto
 
 ## Build
 
-### 1. Fetch dependency tags
+### 1. Dependency versions
 
-```bash
-make tags
-```
-
-This writes the release tag of each build dependency to `.tags`. Tags come from [`versions.env`](../versions.env), so they are not necessarily the latest upstream release. If an entry is left empty, the latest upstream release is fetched from the GitHub API instead:
+Image builds read the release tag of each build dependency from [`versions.env`](../versions.env), so they are not necessarily the latest upstream release. If an entry is left empty, the latest upstream release is looked up on GitHub instead:
 
 | Variable | Repository | Used by |
 |---|---|---|
@@ -18,18 +14,22 @@ This writes the release tag of each build dependency to `.tags`. Tags come from 
 | `BEACON_TAG` | [AMDEPYC/beacon](https://github.com/AMDEPYC/beacon) | Host images |
 | `SNPHOST_TAG` | [virtee/snphost](https://github.com/virtee/snphost) | Host images |
 
-The `.tags` file is passed to mkosi via `--env-file` so each build script uses the pre-fetched tag rather than calling the GitHub API individually. This avoids rate-limit issues when building multiple images (the GitHub API allows 60 unauthenticated requests/hour).
+The tags are passed to mkosi via `--environment`, so each build script uses them rather than calling the GitHub API individually. A latest tag is looked up at most once per `make` run, by following the `github.com/<repo>/releases/latest` redirect, so no GitHub token is needed and the API rate limit (60 unauthenticated requests/hour) does not apply.
 
-Re-run `make tags` after changing `versions.env` (or, for unpinned entries, to pick up a new upstream release). The `.tags` file is not checked in, so it won't update automatically.
-
-If you hit rate limits, set a token first:
+To check `versions.env` and see the tags a build will use:
 
 ```bash
-export GITHUB_TOKEN=$(gh auth token)
-make tags
+make versions
 ```
 
-> **Note**: In CI, the `resolve-tags` job of the `build-and-release` workflow resolves these same tags from `versions.env` and the build jobs inject them directly into mkosi configs, so `make tags` is only needed for local builds.
+To try a different version without editing `versions.env`, override it on the command line (an empty value fetches the latest release):
+
+```bash
+make SNPGUEST_TAG=v0.11.0 guest-fedora-41
+make SNPGUEST_TAG= guest-fedora-41
+```
+
+> **Note**: In CI, the `resolve-tags` job of the `build-and-release` workflow resolves these same tags from `versions.env` and the build jobs inject them directly into mkosi configs.
 
 ### 2. Build images
 

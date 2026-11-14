@@ -19,7 +19,6 @@ images/*/*.initrd
 images/*/*.vmlinuz
 images/*/guest-*
 images/*/host-*
-images/.tags
 
 results/
 artifacts/

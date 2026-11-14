@@ -53,7 +53,7 @@ You can create and publish new host or guest images in `sev-certify` with `mkosi
 
     Then, verify for successful execution with the built new host and guest OS images under `devel` tag.
 
-    [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both `make tags` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release.
+    [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both the `images/Makefile` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release.
 
     If the `build-and-release` workflow fails, you need to troubleshoot for the error in the workflow log, implement changes, and retest until successful execution.
 
@@ -176,7 +176,6 @@ Manifest generation is **disabled by default** to reduce build time (~100 second
 ```bash
 # Build all images with manifest generation
 cd images
-make tags
 make GENERATE_MANIFEST=yes all
 
 # Build a specific image with manifest generation
@@ -185,7 +184,7 @@ make GENERATE_MANIFEST=yes guest-<distro>-<release>
 
 The `GENERATE_MANIFEST` variable defaults to empty in the Makefile. When set to a truthy value (`y`, `yes`, or `1`), mkosi is invoked with the environment variable to generate manifest files.
 
-[`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both `make tags` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release.
+[`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both the `images/Makefile` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release.
 
 **For local builds using mkosi directly**, pass the environment variable:
 
