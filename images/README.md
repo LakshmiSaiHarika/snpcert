@@ -22,6 +22,8 @@ To check `versions.env` and see the tags a build will use:
 make versions
 ```
 
+Every image build runs this first. It fails, listing the offending entries, if a pinned tag (from `versions.env` or the command line) is not an existing GitHub release of its repository, so a typo stops `make` before mkosi starts. Run the check alone with `make check-versions`.
+
 To try a different version without editing `versions.env`, override it on the command line (an empty value fetches the latest release):
 
 ```bash

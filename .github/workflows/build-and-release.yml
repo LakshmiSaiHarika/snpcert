@@ -48,10 +48,32 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Components to resolve. Each <name> is also the output name and, upper-cased,
+          # the NAME_TAG variable in versions.env
+          components=(snphost snpguest beacon)
+          declare -A repos=(
+            [snphost]=virtee/snphost
+            [snpguest]=virtee/snpguest
+            [beacon]=AMDEPYC/beacon
+          )
+          # Release asset the mkosi.build scripts download
+          declare -A assets=(
+            [snphost]=snphost
+            [snpguest]=snpguest
+            [beacon]=beacon-linux-x86_64
+          )
+
+          # Variables allowed in versions.env, derived from the components above
+          version_vars=()
+          for name in "${components[@]}"; do
+            version_vars+=("${name^^}_TAG")
+          done
+
           # Reject anything other than comments, blank lines and NAME=TAG for known names,
           # so a typo'd name doesn't silently fall back to the upstream latest release
-          if bad=$(grep -nvE '^[[:space:]]*(#|$)|^(SNPHOST_TAG|SNPGUEST_TAG|BEACON_TAG)=[^[:space:]]*$' versions.env); then
-            echo "::error file=versions.env::Unexpected line(s); expected NAME=TAG with NAME one of SNPHOST_TAG, SNPGUEST_TAG, BEACON_TAG"
+          alternatives=$(IFS='|'; echo "${version_vars[*]}")
+          if bad=$(grep -nvE "^[[:space:]]*(#|\$)|^($alternatives)=[^[:space:]]*\$" versions.env); then
+            echo "::error file=versions.env::Unexpected line(s); expected NAME=TAG with NAME one of ${version_vars[*]}"
             echo "$bad" >&2
             exit 1
           fi
@@ -65,34 +87,55 @@ jobs:
             }
           }
 
-          # Assign first so a failing resolve aborts the step under set -e
-          snphost=$(resolve virtee/snphost "${SNPHOST_TAG:-}")
-          snpguest=$(resolve virtee/snpguest "${SNPGUEST_TAG:-}")
-          beacon=$(resolve AMDEPYC/beacon "${BEACON_TAG:-}")
+          # Check the release asset the mkosi.build scripts download is reachable
+          # (first byte only, following redirects), so a release missing the asset
+          # fails here rather than mid-build
+          check_download() {  # $1=repo $2=tag $3=asset
+            local url="https://github.com/$1/releases/download/$2/$3" code
+            code=$(curl -sL -r 0-0 -o /dev/null -w '%{http_code}' "$url") || code=000
+            case "$code" in
+              200|206) echo "OK: $url" ;;
+              *)
+                echo "::error::Cannot download $url (HTTP $code); check that release $2 of $1 has asset $3"
+                return 1
+                ;;
+            esac
+          }
 
-          for pair in "virtee/snphost=$snphost" "virtee/snpguest=$snpguest" "AMDEPYC/beacon=$beacon"; do
-            tag=${pair#*=}
+          declare -A tags
+          summary=()
+          for name in "${components[@]}"; do
+            repo=${repos[$name]}
+            pin_var="${name^^}_TAG"
+            pinned="${!pin_var:-}"
+
+            # Assign first so a failing resolve aborts the step under set -e
+            tag=$(resolve "$repo" "$pinned")
             if [ -z "$tag" ] || [ "$tag" = "null" ]; then
-              echo "::error::Failed to resolve release tag for ${pair%%=*}"
+              echo "::error::Failed to resolve release tag for $repo"
               exit 1
             fi
+            tags[$name]=$tag
+            source=${pinned:+pinned}; source=${source:-latest}
+            summary+=("| $repo | $tag | $source |")
           done
 
-          {
-            echo "snphost=$snphost"
-            echo "snpguest=$snpguest"
-            echo "beacon=$beacon"
-          } >> "$GITHUB_OUTPUT"
+          failed=0
+          for name in "${components[@]}"; do
+            check_download "${repos[$name]}" "${tags[$name]}" "${assets[$name]}" || failed=1
+          done
+          [ "$failed" -eq 0 ] || exit 1
 
-          source_of() { if [ -n "$1" ]; then echo "pinned"; else echo "latest"; fi; }
+          for name in "${components[@]}"; do
+            echo "$name=${tags[$name]}" >> "$GITHUB_OUTPUT"
+          done
+
           {
             echo "### Resolved component versions"
             echo
             echo "| Repository | Version | Source |"
             echo "|---|---|---|"
-            echo "| virtee/snphost | $snphost | $(source_of "${SNPHOST_TAG:-}") |"
-            echo "| virtee/snpguest | $snpguest | $(source_of "${SNPGUEST_TAG:-}") |"
-            echo "| AMDEPYC/beacon | $beacon | $(source_of "${BEACON_TAG:-}") |"
+            printf '%s\n' "${summary[@]}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Development release for tag or main pushes
@@ -179,10 +222,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          # mkosi.conf files to inject into; the component is the module directory name
+          version_confs=(
+            modules/build/common/snpguest/mkosi.conf
+            modules/build/host/beacon/mkosi.conf
+            modules/build/host/snphost/mkosi.conf
+          )
+
           # Inject environment variables into mkosi.conf files
-          sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
-          sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/build/host/beacon/mkosi.conf
-          sed -i "/^\[Build\]/a\Environment=SNPHOST_TAG=$SNPHOST_TAG" modules/build/host/snphost/mkosi.conf
+          for conf in "${version_confs[@]}"; do
+            component=$(basename "$(dirname "$conf")")
+            var="${component^^}_TAG"
+            sed -i "/^\[Build\]/a\Environment=$var=${!var}" "$conf"
+          done
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         run: |

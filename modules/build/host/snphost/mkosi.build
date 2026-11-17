@@ -2,9 +2,10 @@
 set -euo pipefail
 set -x
 
-# Use SNPHOST_TAG if set, otherwise fetch from GitHub API
-LATEST_TAG="${SNPHOST_TAG:-$(curl -s https://api.github.com/repos/virtee/snphost/releases/latest | jq -r '.tag_name')}"
+# SNPHOST_TAG is always resolved by the images Makefile (pinned in versions.env
+# or the latest release) and passed in via .tags
+: "${SNPHOST_TAG:?SNPHOST_TAG is not set; build through the images Makefile}"
 
 # Download and install into DESTDIR with correct permissions
-curl -fsSL "https://github.com/virtee/snphost/releases/download/${LATEST_TAG}/snphost" \
+curl -fsSL "https://github.com/virtee/snphost/releases/download/${SNPHOST_TAG}/snphost" \
   | install -D -m 0755 /dev/stdin "${DESTDIR}/usr/local/bin/snphost"
