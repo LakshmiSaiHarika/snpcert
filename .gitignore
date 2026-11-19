@@ -22,3 +22,4 @@ images/*/host-*
 
 results/
 artifacts/
+images/.tags

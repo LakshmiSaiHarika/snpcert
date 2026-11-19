@@ -53,7 +53,7 @@ You can create and publish new host or guest images in `sev-certify` with `mkosi
 
     Then, verify for successful execution with the built new host and guest OS images under `devel` tag.
 
-    [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both the `images/Makefile` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release.
+    [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both the `images/Makefile` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release. The `resolve-tags` job writes a "Resolved component versions" table (repository, version, and whether it was pinned or the latest) to the workflow run's Summary page in the GitHub Actions UI.
 
     If the `build-and-release` workflow fails, you need to troubleshoot for the error in the workflow log, implement changes, and retest until successful execution.
 
