@@ -5,6 +5,7 @@ compatibility of past hardware features.
 # Contents
 - [Certification Levels by Hardware](#certification-levels-by-hardware)
 - [Certification Level Definitions](#certification-level-definitions)
+- [End-of-Life OS Certifications (Archived)](#end-of-life-os-certifications-archived)
 
 # Certification Levels by Hardware
 
@@ -56,3 +57,13 @@ AMD EPYC 9005 (Turin)
 | 3.0.0-0 | SEV-SNP Attestation |
 | 3.0.0-1 | [key derivation](features/key-derivation.md), [snphost config & commit](features/tcb-config-commit.md), [ID block](features/id-block.md) |
 | 3.1.1-0 | Memory Hotplug, Vector Mitigation, Cloud Hypervisor |
+
+# End-of-Life OS Certifications (Archived)
+
+These results were valid when issued. The OS no longer receives upstream
+security updates and is no longer built or certified by sev-certify. Images
+remain available in the tagged release listed. See the
+[OS lifecycle policy](os-lifecycle-policy.md).
+
+| OS | EOL date | Processor | Last certified | Last release with images | Archived |
+|---|---|---|---|---|---|

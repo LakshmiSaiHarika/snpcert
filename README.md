@@ -26,6 +26,10 @@ This table contains operating systems that have undergone certification testing 
 ✅ Latest Level Certified
 ❌ Latest Level Not Certified
 ⚠️ Backwards Compatibility Issues - see [hardware tables][hardware-tables]
+🔚 End-of-Life - no longer certified; see [archived results][eol-archive]
+
+<!-- os-lifecycle:upcoming-removals:start -->
+<!-- os-lifecycle:upcoming-removals:end -->
 
 See [Certificate Level Definitions][cert-definitions]
 for the features certified at each level.
@@ -47,6 +51,7 @@ Host and Guest images are constructed in GitHub Workflows via [`mkosi`](https://
 [cert-4.1]: ./docs/certifications.md#amd-epyc-9005-bergamo
 [hardware-tables]: ./docs/certifications.md#certification-levels-by-hardware
 [cert-definitions]: ./docs/certifications.md#certification-level-definitions
+[eol-archive]: ./docs/certifications.md#end-of-life-os-certifications-archived
 
 Users seeking to verify [AMD Secure Encrypted Virtualization (SEV) features](https://www.amd.com/en/developer/sev.html) features for an Operating System not included in the current`sev-certify` project can utilize our guide [here](./docs/how-to-add-new-os-images.md).
 
