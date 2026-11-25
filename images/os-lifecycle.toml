@@ -1,0 +1,94 @@
+# OS lifecycle data for sev-certify images.
+# Policy: docs/os-lifecycle-policy.md. Tooling: scripts/os_lifecycle.py.
+#
+# One table per image pair. The key is the image suffix: images/{host,guest}-<key>,
+# and "<distro>-<release>" for the build-and-release workflow matrix, which is
+# generated from this file. [tools-tree] tracks the mkosi build tools tree.
+# Quote keys that contain a dot: ["ubuntu-26.04"].
+#
+#   product            endoflife.date product slug
+#   cycle              endoflife.date release name
+#   eol                cached upstream EOL date (eolFrom), or "none" for testing releases.
+#                      Refreshed weekly by .github/workflows/os-eol-check.yml.
+#   os_label           GitHub label emitted by beacon-report.sh. The matrix row name is
+#                      derived from it the same way update-certification-matrix.yml does
+#                      (os-opensuse-leap-16.0 -> "Opensuse leap 16.0").
+#   minor_releases     true if labels and matrix rows are per minor release
+#                      (os_label + ".<minor>"); minors older than latest_minor are superseded
+#   latest_minor       cached latest minor release (minor_releases only)
+#   latest_minor_date  cached GA date of latest_minor
+#   codename           testing releases only: codename to watch for a stable release
+#   extended_until     approved extension of the removal deadline (at most eol + 90 days)
+#   state              "removed" once the images are deleted. Keep the entry so the
+#                      certification matrix guard still recognises its label.
+#   removed            date the images were removed
+#   last_release       last tagged release that ships the images
+
+[centos-10]
+product = "centos-stream"
+cycle = "10"
+eol = 2030-05-31
+os_label = "os-centos-10"
+
+[debian-13]
+product = "debian"
+cycle = "13"
+eol = 2030-06-30
+os_label = "os-debian-13"
+
+[debian-forky]
+product = "debian"
+cycle = "testing"
+eol = "none"
+os_label = "os-debian-forky"
+codename = "forky"
+
+[fedora-41]
+product = "fedora"
+cycle = "41"
+eol = 2025-12-15
+os_label = "os-fedora-41"
+
+[fedora-44]
+product = "fedora"
+cycle = "44"
+eol = 2027-06-02
+os_label = "os-fedora-44"
+
+["opensuse-16.0"]
+product = "opensuse"
+cycle = "16.0"
+eol = 2027-10-31
+os_label = "os-opensuse-leap-16.0"
+
+[rocky-10]
+product = "rocky-linux"
+cycle = "10"
+eol = 2035-05-31
+os_label = "os-rocky-10"
+minor_releases = true
+latest_minor = "10.3"
+latest_minor_date = 2026-11-16
+
+["ubuntu-25.04"]
+product = "ubuntu"
+cycle = "25.04"
+eol = 2026-01-17
+os_label = "os-ubuntu-25.04"
+
+["ubuntu-25.10"]
+product = "ubuntu"
+cycle = "25.10"
+eol = 2026-07-01
+os_label = "os-ubuntu-25.10"
+
+["ubuntu-26.04"]
+product = "ubuntu"
+cycle = "26.04"
+eol = 2031-05-29
+os_label = "os-ubuntu-26.04"
+
+[tools-tree]
+product = "fedora"
+cycle = "44"
+eol = 2027-06-02
