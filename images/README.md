@@ -40,7 +40,10 @@ make all                     # build every image
 make clean-host-fedora-41    # clean a specific image
 make clean                   # clean every image
 make status                  # show built images and their artifacts
+make lifecycle               # show each OS's end-of-life stage
 ```
+
+Building an image whose OS is past its upstream end-of-life prints a warning. Tagged releases refuse to build it. EOL dates are tracked in [`os-lifecycle.toml`](os-lifecycle.toml); see the [OS lifecycle policy](../docs/os-lifecycle-policy.md).
 
 ### Manifest generation (optional)
 

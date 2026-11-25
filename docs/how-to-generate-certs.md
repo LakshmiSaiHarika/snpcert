@@ -124,6 +124,8 @@ Start the machine with this boot option selected. If you have several images que
 ### 3. Boot the machine using HTTP boot
 If configured correctly, in the Test Server's console you'll see it downloading the host image. You can switch back to your dispatch server and watch for the status of the test via the icons to the left of the images. See [Workflow-Stats](https://github.com/AMDEPYC/dispatch?tab=readme-ov-file#workflow-states) for a table of the icon meanings. When it reaches 🏁 , you should see a new Github Issue in the repository that you specified when invoking `dispatch`.
 
+> **Note:** Results for an OS that has reached upstream end-of-life (for example, from images in an older tagged release) are still posted as an issue. They're labelled `os-eol` and aren't added to the [certification matrix](../README.md#certification-matrix). The same applies to superseded minor releases such as an older Rocky Linux 10.x. See the [OS lifecycle policy](./os-lifecycle-policy.md).
+
 ## Forking `AMDEPYC/sev-certify` for certification testing
 If you wish to build alternate images and/or send test results to an alternate repository, fork `AMDEPYC/sev-certify` into your organization or personal account.
 

@@ -15,12 +15,20 @@ You can create and publish new host or guest images in `sev-certify` with `mkosi
 
     If your new mkosi template differs from all existing templates, ensure to meet the minimum linux package requirements as detailed in the configuration [section](#configure-new-mkosi-template-for-host-and-guest-os-images).
 
-- **<ins>Integrate new OS Release into GitHub Workflow:</ins>**
+- **<ins>Register the new OS Release in the OS lifecycle file:</ins>**
 
-  Add new host/guest OS images to your forked `sev-certify` GitHub repository by including the new OS release in the `distro matrix` of the `build-and-release.yml` workflow located in `sev-certify/.github/workflows`:
+  Add an entry for the new images to [`images/os-lifecycle.toml`](../images/os-lifecycle.toml). The `build-and-release.yml` workflow generates its build matrix from this file, so you don't need to edit the workflow. The key is the image suffix `<new-os-name>-<new-os-release>`, and it must be quoted if it contains a dot:
+  ```toml
+  ["<new-os-name>-<new-os-release>"]
+  product = "<endoflife.date product>"   # e.g. "ubuntu", see https://endoflife.date
+  cycle = "<endoflife.date release>"     # e.g. "26.04"
+  eol = YYYY-MM-DD                       # the release's eolFrom date on endoflife.date
+  os_label = "os-<ID>-<VERSION_ID>"      # from the image's /etc/os-release, as beacon-report.sh labels issues
   ```
-      - distro: <new-os-name>
-        release: <new-os-release>
+
+  **Onboarding rule:** a new OS release must have **at least 6 months** of upstream support left (until its `eol`) when the PR merges. The `lint` workflow enforces this. See the [OS lifecycle policy](./os-lifecycle-policy.md) for how OSes are tracked and phased out when they reach end-of-life. Check that the entry is valid with:
+  ```bash
+  python3 scripts/os_lifecycle.py validate --base-ref origin/main
   ```
 
 - **<ins>Build new Host and Guest OS images:</ins>**
