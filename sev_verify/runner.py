@@ -13,7 +13,12 @@ from dataclasses import replace
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-from .guest_vsock import GuestVsockError, pull_guest_file_to_host, run_guest_command
+from .guest_vsock import (
+    GuestVsockError,
+    guest_base64_command,
+    pull_guest_file_to_host,
+    run_guest_command,
+)
 from .models import (
     BaseStep,
     StepContext,
@@ -276,11 +281,18 @@ def run_guest_step(step: BaseStep, profile: VMProfile) -> StepResult:
 def run_guest_pull_step(
     step: BaseStep, profile: VMProfile, artifact_dir: Path | None = None,
 ) -> StepResult:
-    """Copy ``step.guest_src`` from the guest to ``step.host_dest`` on the host."""
+    """Copy ``step.guest_src`` from the guest to ``step.host_dest`` on the host.
+
+    Files are transferred by running ``base64 <guest_src>`` on the guest via vsock,
+    then decoding and writing to ``host_dest`` on the host.
+    """
     start = time.monotonic()
     host_path = Path(step.host_dest)
     if artifact_dir is not None and not host_path.is_absolute():
         host_path = artifact_dir / host_path
+
+    command = guest_base64_command(step.guest_src)  # recorded in steps.log
+
     try:
         pull_guest_file_to_host(
             profile,
@@ -295,6 +307,7 @@ def run_guest_pull_step(
             result="error",
             stderr=str(exc),
             duration_ms=duration_ms,
+            command=command,
         )
     duration_ms = int((time.monotonic() - start) * 1000)
     passed = _check_expected_values(step, 0, "")
@@ -304,6 +317,7 @@ def run_guest_pull_step(
         exit_code=0,
         stdout=f"Pulled {step.guest_src} -> {host_path}",
         duration_ms=duration_ms,
+        command=command,
     )
 
 

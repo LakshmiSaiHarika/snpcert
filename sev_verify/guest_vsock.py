@@ -225,6 +225,11 @@ def run_guest_command(
     return _parse_command_response(command, response, duration_ms)
 
 
+def guest_base64_command(guest_path: str) -> str:
+    """Guest command used to read ``guest_path`` as base64."""
+    return f"base64 {shlex.quote(guest_path)}"
+
+
 def fetch_guest_file_bytes(
     profile: VMProfile,
     guest_path: str,
@@ -238,7 +243,7 @@ def fetch_guest_file_bytes(
     Large files may exceed the vsock response limit; prefer small artifacts
     (e.g. attestation reports) or raise ``guest_vsock`` limits on ``VMProfile``.
     """
-    cmd = f"base64 {shlex.quote(guest_path)}"
+    cmd = guest_base64_command(guest_path)
     gcr = run_guest_command(profile, cmd, timeout=timeout)
     if gcr.exit_code != 0:
         raise GuestVsockError(
