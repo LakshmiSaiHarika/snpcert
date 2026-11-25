@@ -11,10 +11,38 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
+      # EOL and superseded OSes are recorded but not counted (docs/os-lifecycle-policy.md).
+      # Without this, a run of an old tagged image would re-insert archived matrix rows.
+      - name: Check OS lifecycle
+        id: lifecycle
+        run: |
+          OS_LABEL=$(jq -r '[.issue.labels[].name | select(test("^os-[a-z]+(-[a-z0-9.]+)*$"; "i") and . != "os-eol")][0] // empty' "$GITHUB_EVENT_PATH")
+          python3 scripts/os_lifecycle.py label-status "$OS_LABEL" --github-output
+
+      - name: Record EOL certification
+        if: steps.lifecycle.outputs.counted == 'false'
+        uses: actions/github-script@v7
+        env:
+          REASON: ${{ steps.lifecycle.outputs.reason }}
+          MATRIX_NAME: ${{ steps.lifecycle.outputs.name }}
+        with:
+          script: |
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            await github.rest.issues.addLabels({ ...repo, issue_number: context.payload.issue.number, labels: ['os-eol'] });
+            await github.rest.issues.createComment({
+              ...repo,
+              issue_number: context.payload.issue.number,
+              body: `${process.env.REASON} This result is recorded but not added to the certification matrix, ` +
+                    `and ${process.env.MATRIX_NAME} is not listed as currently certified. ` +
+                    `See the [OS lifecycle policy](${context.serverUrl}/${repo.owner}/${repo.repo}/blob/main/docs/os-lifecycle-policy.md).`
+            });
+
       - name: Update Certification Matrix
+        if: steps.lifecycle.outputs.counted != 'false'
         uses: actions/github-script@v7
         with:
           script: |

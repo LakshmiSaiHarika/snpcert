@@ -5,7 +5,7 @@ CLEAN_IMAGES := $(addprefix clean-,$(IMAGES))
 GH_AUTH := $(if $(GITHUB_TOKEN),-H "Authorization: Bearer $(GITHUB_TOKEN)")
 GH_LATEST = curl -sf $(GH_AUTH) https://api.github.com/repos/$(1)/releases/latest | jq -r '.tag_name'
 
-.PHONY: all clean list status tags $(IMAGES) $(CLEAN_IMAGES)
+.PHONY: all clean list status lifecycle tags $(IMAGES) $(CLEAN_IMAGES)
 
 tags:
 	@set -e; \
@@ -42,8 +42,13 @@ status:
 		fi; \
 	done
 
+lifecycle:
+	@python3 ../scripts/os_lifecycle.py status
+
+# Warns (never fails) when building an image past its upstream EOL; see os-lifecycle.toml
 # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
 $(IMAGES): | .tags
+	@python3 ../scripts/os_lifecycle.py guard $@ || true
 	@MKOSI_ENV=""; \
 	case "$(GENERATE_MANIFEST)" in \
 		y|yes|1) MKOSI_ENV="$$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";; \

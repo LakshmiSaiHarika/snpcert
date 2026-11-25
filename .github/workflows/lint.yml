@@ -15,3 +15,22 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           allowed-commit-types: "feat,fix,build,chore,ci,docs,style,refactor,perf,test"
+
+  os-lifecycle:
+    name: os lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # base branch copy of images/os-lifecycle.toml
+
+      - name: Test os_lifecycle.py
+        run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: Validate images/os-lifecycle.toml
+        run: |
+          # On PRs, newly added OS releases must have at least 6 months to EOL
+          BASE=""
+          if [[ -n "${GITHUB_BASE_REF}" ]]; then BASE="--base-ref origin/${GITHUB_BASE_REF}"; fi
+          python3 scripts/os_lifecycle.py validate $BASE
+          python3 scripts/os_lifecycle.py status

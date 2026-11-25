@@ -27,14 +27,38 @@ permissions:
   actions: read    # Required for workflow access
 
 jobs:
+  # EOL gate and build matrix, both from images/os-lifecycle.toml (docs/os-lifecycle-policy.md)
+  lifecycle:
+    name: os lifecycle
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check OS end-of-life status
+        run: |
+          # Tagged releases must not ship EOL images; other builds only warn
+          STRICT=""
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then STRICT="--strict"; fi
+          python3 scripts/os_lifecycle.py guard --all $STRICT
+
+      - name: Generate build matrix
+        id: matrix
+        run: echo "matrix=$(python3 scripts/os_lifecycle.py matrix)" >> "$GITHUB_OUTPUT"
+
   # Development release for tag or main pushes
   create-release:
     name: create new release for tagged or latest assets
+    needs: lifecycle
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # previous tag date for the release notes
 
       - name: Recreate release(replace assets)
         env:
@@ -52,42 +76,29 @@ jobs:
               --prerelease
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
+            # Release notes list OSes removed since the previous tag and OSes approaching EOL
+            PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)
+            SINCE=""
+            if [[ -n "${PREV_TAG}" ]]; then SINCE="--since $(git log -1 --format=%cs "${PREV_TAG}")"; fi
+            python3 scripts/os_lifecycle.py release-notes --tag "${TAG}" $SINCE > "${RUNNER_TEMP}/release-notes.md"
+
             gh release delete "${TAG}" --cleanup-tag --yes || true
             while git fetch --tags --prune-tags; git tag -l | grep "^${TAG}$"; do
               sleep 2;
             done
             gh release create "${TAG}" \
               --title "SEV Certify ${TAG}" \
-              --notes "OS images for ${TAG} certification"
+              --notes-file "${RUNNER_TEMP}/release-notes.md"
           fi
 
   build:
     name: ${{ matrix.distro }}-${{ matrix.release }}
+    needs: lifecycle
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - distro: fedora
-            release: 41
-          - distro: ubuntu
-            release: 25.04
-          - distro: debian
-            release: 13
-          - distro: centos
-            release: 10
-          - distro: rocky
-            release: 10
-          - distro: debian
-            release: forky
-          - distro: ubuntu
-            release: "25.10"
-          - distro: ubuntu
-            release: "26.04"
-          - distro: opensuse
-            release: "16.0"
-          - distro: fedora
-            release: "44"
+      # One entry per image in images/os-lifecycle.toml that has not been removed
+      matrix: ${{ fromJSON(needs.lifecycle.outputs.matrix) }}
 
     steps:
       - name: Checkout

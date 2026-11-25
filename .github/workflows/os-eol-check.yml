@@ -1,0 +1,140 @@
+name: os-eol-check
+
+# Tracks upstream end-of-life dates for certified OSes (docs/os-lifecycle-policy.md):
+#  - refreshes the cached dates in images/os-lifecycle.toml from endoflife.date and
+#    marks EOL rows in README.md, via a PR on the os-lifecycle/auto-update branch
+#  - keeps one "EOL: <OS> (<date>)" tracking issue per OS within 90 days of EOL or past it
+#  - after a removal PR merges, labels the OS's certificate issues os-eol and closes them
+on:
+  schedule:
+    - cron: '17 6 * * 1'  # Mondays 06:17 UTC
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'images/os-lifecycle.toml'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: os-eol-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check upstream EOL dates
+        run: |
+          python3 scripts/os_lifecycle.py check --update \
+            --report "${RUNNER_TEMP}/eol-report.json" --summary >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/os_lifecycle.py sync-docs
+          python3 scripts/os_lifecycle.py validate
+
+      - name: Open PR with lifecycle updates
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: os-lifecycle/auto-update
+          delete-branch: true
+          add-paths: |
+            images/os-lifecycle.toml
+            README.md
+          commit-message: 'chore: update OS lifecycle data'
+          title: 'chore: update OS lifecycle data'
+          labels: os-eol
+          body: |
+            Automated update from the weekly `os-eol-check` workflow:
+
+            - cached EOL dates in `images/os-lifecycle.toml` that changed upstream on [endoflife.date](https://endoflife.date)
+            - 🔚 status and the "Upcoming removals" note in `README.md` for OSes past EOL
+
+            See the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) summary for details, and the [OS lifecycle policy](${{ github.server_url }}/${{ github.repository }}/blob/main/docs/os-lifecycle-policy.md).
+
+      - name: Sync tracking and certificate issues
+        uses: actions/github-script@v7
+        env:
+          REPORT: ${{ runner.temp }}/eol-report.json
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'));
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const EOL_LABEL = 'os-eol';
+
+            // Ensure the os-eol label exists
+            await github.rest.issues.getLabel({ ...repo, name: EOL_LABEL }).catch(async e => {
+              if (e.status !== 404) throw e;
+              await github.rest.issues.createLabel({
+                ...repo, name: EOL_LABEL, color: '6e7781',
+                description: 'OS past (or within 90 days of) upstream end-of-life'
+              });
+            });
+
+            // Tracking issues carry a "<!-- os-lifecycle key=<key> stage=<stage> -->" marker
+            const marker = body => (body || '').match(/<!-- os-lifecycle key=(\S+) stage=(\S+) -->/);
+            const tracking = (await github.paginate(github.rest.issues.listForRepo, {
+              ...repo, state: 'open', labels: EOL_LABEL, per_page: 100
+            })).filter(i => !i.pull_request && marker(i.body));
+            const repoLabels = await github.paginate(github.rest.issues.listLabelsForRepo, { ...repo, per_page: 100 });
+
+            for (const entry of report.entries) {
+              const existing = tracking.find(i => marker(i.body)[1] === entry.key);
+
+              if (entry.issue_title) {
+                if (!existing) {
+                  const { data } = await github.rest.issues.create({
+                    ...repo, title: entry.issue_title, body: entry.issue_body, labels: [EOL_LABEL]
+                  });
+                  core.info(`Opened #${data.number}: ${entry.issue_title}`);
+                } else {
+                  const previousStage = marker(existing.body)[2];
+                  if (existing.title !== entry.issue_title || existing.body !== entry.issue_body) {
+                    await github.rest.issues.update({
+                      ...repo, issue_number: existing.number, title: entry.issue_title, body: entry.issue_body
+                    });
+                  }
+                  if (previousStage !== entry.stage) {
+                    await github.rest.issues.createComment({ ...repo, issue_number: existing.number, body: entry.stage_comment });
+                    core.info(`#${existing.number}: ${previousStage} -> ${entry.stage}`);
+                  }
+                }
+              } else if (existing) {
+                // Removed, or the upstream EOL date moved out of the 90-day window
+                await github.rest.issues.createComment({ ...repo, issue_number: existing.number, body: entry.stage_comment });
+                await github.rest.issues.update({
+                  ...repo, issue_number: existing.number, state: 'closed',
+                  state_reason: entry.stage === 'removed' ? 'completed' : 'not_planned'
+                });
+                core.info(`Closed #${existing.number} (${entry.stage})`);
+              }
+
+              // Archive certificate issues of removed OSes (policy section 6.2)
+              if (entry.stage !== 'removed' || !entry.label_regex) continue;
+              const labelRe = new RegExp(entry.label_regex, 'i');
+              for (const label of repoLabels.filter(l => labelRe.test(l.name))) {
+                const description = `EOL ${entry.eol} — archived`;
+                if (label.description !== description) {
+                  await github.rest.issues.updateLabel({ ...repo, name: label.name, description });
+                }
+                const issues = await github.paginate(github.rest.issues.listForRepo, {
+                  ...repo, state: 'all', labels: `certificate,${label.name}`, per_page: 100
+                });
+                for (const issue of issues.filter(i => !i.pull_request)) {
+                  if (!issue.labels.some(l => l.name === EOL_LABEL)) {
+                    await github.rest.issues.addLabels({ ...repo, issue_number: issue.number, labels: [EOL_LABEL] });
+                  }
+                  if (issue.state === 'open') {
+                    await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body: entry.archive_comment });
+                    await github.rest.issues.update({ ...repo, issue_number: issue.number, state: 'closed', state_reason: 'completed' });
+                    core.info(`Archived certificate #${issue.number} (${label.name})`);
+                  }
+                }
+              }
+            }
